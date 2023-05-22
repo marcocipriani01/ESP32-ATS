@@ -6,6 +6,7 @@
 #define NTC {36, 39, 34, 35}
 
 #define CLAMP 32
+
 #define VIN_DIVIDER 33
 
 #define RELAY_FAN 5

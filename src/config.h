@@ -3,19 +3,24 @@
 
 #define BAUD_RATE 115200
 
+#define VREF 3.3
+
 #define NTC_B 3950.0
 #define NTC_R0 100000.0
 #define NTC_T0 298.15
-#define NTC_VS 3.3
 #define NTC_R1 47000.0
 #define NTC_WINDOW 5
 
+#define CLAMP_A_1V 5.0
+#define CLAMP_SAMPLES 2048
 #define CLAMP_WINDOW 5
+
 #define VIN_DIVIDER_R1 100000.0
 #define VIN_DIVIDER_R2 12000.0
 #define VIN_REGRESSION_M 0.9361
-#define VIN_REGRESSION_Q +0.8146
+#define VIN_REGRESSION_Q 0.8146
 #define VIN_DIVIDER_WINDOW 10
+#define VIN_MAX 30.0
 
 #define ADC_MAX 4095.0
 #define ADC_RESOLUTION 12

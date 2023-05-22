@@ -2,6 +2,7 @@
 #define MAIN_H
 
 #include <Arduino.h>
+#include <EmonLib.h>
 
 #include "config.h"
 #include "pinmap.h"
@@ -10,5 +11,7 @@
 
 double readNTC(uint8_t id);
 double readVoltage();
+double readCurrent();
+double calcIrms();
 
 #endif
