@@ -3,7 +3,7 @@
 #define NTC_COUNT (sizeof(ntcPins) / sizeof(uint8_t))
 
 uint8_t ntcPins[] = NTC;
-MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT] {NTC_WINDOW, NTC_WINDOW, NTC_WINDOW, NTC_WINDOW};
+MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT]{NTC_WINDOW, NTC_WINDOW, NTC_WINDOW, NTC_WINDOW};
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
@@ -11,10 +11,12 @@ MedianFilter clampFilter(CLAMP_WINDOW);
 void setup() {
     Serial.begin(BAUD_RATE);
 
+    loadSettings();
+
     for (uint8_t i = 0; i < NTC_COUNT; i++) {
         pinMode(ntcPins[i], INPUT);
     }
-    
+
     pinMode(CLAMP, INPUT);
     pinMode(VIN_DIVIDER, INPUT);
 
@@ -42,8 +44,30 @@ void setup() {
 }
 
 void loop() {
-    Serial.println(readCurrent());
-    delay(100);
+    
+}
+
+void serialEvent() {
+    while (Serial.available()) {
+        if (Serial.read() != ':') continue;
+        switch (Serial.read()) {
+            case 'C': {
+                Serial.println("Calibrating clamp...");
+                double clampNoise = 0.0;
+                const uint8_t samples = 10;
+                for (uint8_t i = 0; i < samples; i++) {
+                    clampNoise += readClampVRMS();
+                }
+                clampNoise /= samples;
+                Serial.print("Clamp noise: ");
+                Serial.print(clampNoise * 1000.0, 5);
+                Serial.println("mV");
+                settings.clampNoise = clampNoise;
+                saveSettings();
+                break;
+            }
+        }
+    }
 }
 
 double readNTC(uint8_t id) {
@@ -56,28 +80,29 @@ double readVoltage() {
     double vin = (ADC_LUT[analogRead(VIN_DIVIDER)] * VREF / ADC_MAX) / (VIN_DIVIDER_R2 / (VIN_DIVIDER_R1 + VIN_DIVIDER_R2));
     vin = vinFilter.add(VIN_REGRESSION_M * vin + VIN_REGRESSION_Q);
     return constrain(vin, 0.0, VIN_MAX);
+} 
+
+double readClampVRMS() {
+    double maxValue = 0.0;
+    double minValue = ADC_MAX;
+    unsigned long start_time = millis();
+    while ((millis() - start_time) < CLAMP_MEASURE_TIME) {
+        double readValue = ADC_LUT[analogRead(CLAMP)];
+        if (readValue > maxValue)
+            maxValue = readValue;
+        else if (readValue < minValue)
+            minValue = readValue;
+    }
+    return (maxValue - minValue) * VREF / ADC_MAX;
 }
 
 double readCurrent() {
-    return clampFilter.add(calcIrms());
+    return dmap(clampFilter.add(readClampVRMS()), settings.clampNoise, CLAMP_CALIBRATION_X, 0.0, CLAMP_CALIBRATION_Y);
 }
 
-// Taken from the EmonLib library
-// https://github.com/openenergymonitor/EmonLib
-// by OpenEnergyMonitor
-// GNU Affero General Public License v3.0
-double calcIrms() {
-    double sumI = 0.0, offsetI = ADC_MAX / 2.0;
-    for (unsigned int n = 0; n < CLAMP_SAMPLES; n++) {
-        double sampleI = ADC_LUT[analogRead(CLAMP)];
-        // Digital low pass filter extracts the 2.5 V or 1.65 V dc offset,
-        // then subtract this - signal is now centered on 0 counts.
-        offsetI = (offsetI + (sampleI - offsetI) / ADC_MAX);
-        double filteredI = sampleI - offsetI;
-        // Root-mean-square method current
-        // 1) Square current values
-        // 2) Sum
-        sumI += (filteredI * filteredI);
-    }
-    return CLAMP_A_1V * ((VREF / 1000.0) / (ADC_COUNTS)) * sqrt(sumI / CLAMP_SAMPLES);
+double dmap(double x, double in_min, double in_max, double out_min, double out_max) {
+    double val = (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    if (val < out_min) return out_min;
+    if (val > out_max) return out_max;
+    return val;
 }
