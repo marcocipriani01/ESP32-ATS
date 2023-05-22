@@ -22,4 +22,7 @@
 #define FIRE_SENS0 21
 #define FIRE_SENS1 16
 
+#define LED_RED 23
+#define LED_GREEN 22
+
 #endif

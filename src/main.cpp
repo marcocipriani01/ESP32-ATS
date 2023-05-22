@@ -25,8 +25,28 @@ void setup() {
 
     pinMode(FIRE_SENS0, INPUT);
     pinMode(FIRE_SENS1, INPUT);
+
+    pinMode(LED_RED, OUTPUT);
+    digitalWrite(LED_RED, LOW);
+    pinMode(LED_GREEN, OUTPUT);
+    digitalWrite(LED_GREEN, LOW);
+
+    analogReadResolution(ADC_RESOLUTION);
 }
 
 void loop() {
-    
+    Serial.print("NTC0: ");
+    Serial.print(readNtc(NTC0));
+    Serial.print(", NTC1: ");
+    Serial.print(readNtc(NTC1));
+    Serial.print(", NTC2: ");
+    Serial.print(readNtc(NTC2));
+    Serial.print(", NTC3: ");
+    Serial.println(readNtc(NTC3));
+}
+
+double readNtc(uint8_t pin) {
+    double Vout = ADC_LUT[analogRead(pin)] * NTC_VS / ADC_MAX;
+    double Rt = NTC_R1 * Vout / (NTC_VS - Vout);
+    return 1.0 / (1.0 / NTC_T0 + log(Rt / NTC_R0) / NTC_B) - 273.15;
 }
