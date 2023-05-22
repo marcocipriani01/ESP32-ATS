@@ -12,6 +12,13 @@
 typedef struct {
     uint8_t marker;
     double clampNoise;
+    double vBattCuttOff;
+    double vBattRecovery;
+    double tempFanOn;
+    double tempWarnHigh;
+    double tempWarnLow;
+    double tempCutOffHigh;
+    double tempCutOffLow;
 } Settings;
 
 extern Settings settings;

@@ -2,11 +2,20 @@
 
 #define NTC_COUNT (sizeof(ntcPins) / sizeof(uint8_t))
 
-uint8_t ntcPins[] = NTC;
+const uint8_t ntcPins[] = NTC;
 MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT]{NTC_WINDOW, NTC_WINDOW, NTC_WINDOW, NTC_WINDOW};
+double ntcAverage = 0.0;
+double ntcVariation = 0.0;
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
+
+boolean warningSent = false;
+
+volatile boolean enableSolarNtc = true, enableGridNtc = true;
+volatile boolean atsSolarOn = true, atsGridOn = true;
+
+unsigned long lastSample = 0L;
 
 TaskHandle_t wifiTask;
 
@@ -24,10 +33,6 @@ void setup() {
 
     pinMode(RELAY_FAN, OUTPUT);
     digitalWrite(RELAY_FAN, HIGH);
-    pinMode(RELAY_ATS_SOLAR, OUTPUT);
-    digitalWrite(RELAY_ATS_SOLAR, HIGH);
-    pinMode(RELAY_ATS_GRID, OUTPUT);
-    digitalWrite(RELAY_ATS_GRID, HIGH);
     pinMode(RELAY_AUX, OUTPUT);
     digitalWrite(RELAY_AUX, HIGH);
 
@@ -48,7 +53,49 @@ void setup() {
 }
 
 void loop() {
-    
+    unsigned long t = millis();
+    if ((t - lastSample) >= SAMPLING_INTERVAL) {
+        double tempMin = 350.0, tempMax = -100.0;
+        for (uint8_t i = 0; i < NTC_COUNT; i++) {
+            double val = readNTC(i);
+            if (val < tempMin) tempMin = val;
+            if (val > tempMax) tempMax = val;
+        }
+        ntcAverage = (tempMin + tempMax) / 2.0;
+        ntcVariation = (tempMax - tempMin) / 2.0;
+
+        if (tempMax >= (settings.tempFanOn + (FAN_HISTERESIS / 2.0)))
+            digitalWrite(RELAY_FAN, LOW);
+        else if (tempMin <= (settings.tempFanOn - (FAN_HISTERESIS / 2.0)))
+            digitalWrite(RELAY_FAN, HIGH);
+
+        if (!warningSent) {
+            if (tempMax >= settings.tempWarnHigh) {
+                warningSent = true;
+                //TODO: send high temp warning
+            } else if (tempMin <= settings.tempWarnLow) {
+                warningSent = true;
+                //TODO: send low temp warning
+            } else {
+                warningSent = false;
+            }
+        }
+
+        if (tempMax >= settings.tempCutOffHigh)
+            enableSolarNtc = false;
+        else if (tempMin <= settings.tempCutOffLow)
+            enableSolarNtc = true;
+
+        
+        
+        atsSolarOn = enableSolarNtc;
+        pinMode(RELAY_ATS_SOLAR, OUTPUT);
+        digitalWrite(RELAY_ATS_SOLAR, !atsSolarOn);
+        atsGridOn = enableGridNtc;
+        pinMode(RELAY_ATS_GRID, OUTPUT);
+        digitalWrite(RELAY_ATS_GRID, !atsGridOn);
+        lastSample = t;
+    }
 }
 
 void wifiLoop(void* parameter) {
@@ -104,7 +151,8 @@ void serialEvent() {
 double readNTC(uint8_t id) {
     double Vout = ADC_LUT[analogRead(ntcPins[id])] * VREF / ADC_MAX;
     double Rt = NTC_R1 * Vout / (VREF - Vout);
-    return ntcFilters[id].add(1.0 / (1.0 / NTC_T0 + log(Rt / NTC_R0) / NTC_B) - 273.15);
+    double temp = ntcFilters[id].add(1.0 / (1.0 / NTC_T0 + log(Rt / NTC_R0) / NTC_B) - 273.15);
+    return constrain(temp, -50.0, 300.0);
 }
 
 double readVoltage() {

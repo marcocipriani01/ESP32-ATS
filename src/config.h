@@ -7,6 +7,10 @@
 #define PASSWORD "V7special"
 #define WIFI_TIMEOUT 15000
 
+#define SAMPLING_INTERVAL 500L
+
+#define FAN_HISTERESIS 3.0
+
 #define VREF 3.3
 
 #define NTC_B 3950.0
