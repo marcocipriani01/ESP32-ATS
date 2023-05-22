@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
+#include "config.h"
+
 #define EEPROM_START 0
 #define EEPROM_MARKER 0x0F
 

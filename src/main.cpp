@@ -8,6 +8,8 @@ MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT]{NTC_WINDOW, NTC_WINDOW, N
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
 
+TaskHandle_t wifiTask;
+
 void setup() {
     Serial.begin(BAUD_RATE);
 
@@ -41,10 +43,39 @@ void setup() {
     digitalWrite(LED_GREEN, LOW);
 
     analogReadResolution(ADC_RESOLUTION);
+
+    xTaskCreatePinnedToCore(wifiLoop, "WiFiLoop", 8192, NULL, 10, &wifiTask, (xPortGetCoreID() == 0) ? 1 : 0);
 }
 
 void loop() {
     
+}
+
+void wifiLoop(void* parameter) {
+    Serial.println(">Starting Wi-Fi connection...");
+    while (!AtsServer::connect()) {
+        Serial.println(">WiFi connection failed, retrying...");
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    Serial.print(">IP Address: ");
+    Serial.println(WiFi.localIP());
+
+    AtsServer::server.on("/", HTTP_GET, AtsServer::root);
+    AtsServer::server.onNotFound(AtsServer::notFound);
+    AtsServer::server.begin();
+
+    Serial.println(">Server is up.");
+
+    while (1) {
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println(">WiFi connection failed, retrying...");
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            AtsServer::connect();
+            Serial.print(">IP Address: ");
+            Serial.println(WiFi.localIP());
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
 }
 
 void serialEvent() {
@@ -52,14 +83,14 @@ void serialEvent() {
         if (Serial.read() != ':') continue;
         switch (Serial.read()) {
             case 'C': {
-                Serial.println("Calibrating clamp...");
+                Serial.println(">Calibrating clamp...");
                 double clampNoise = 0.0;
                 const uint8_t samples = 10;
                 for (uint8_t i = 0; i < samples; i++) {
                     clampNoise += readClampVRMS();
                 }
                 clampNoise /= samples;
-                Serial.print("Clamp noise: ");
+                Serial.print(">Clamp noise: ");
                 Serial.print(clampNoise * 1000.0, 5);
                 Serial.println("mV");
                 settings.clampNoise = clampNoise;

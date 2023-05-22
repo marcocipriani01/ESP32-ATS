@@ -3,6 +3,10 @@
 
 #define BAUD_RATE 115200
 
+#define SSID "4G-90007273"
+#define PASSWORD "V7special"
+#define WIFI_TIMEOUT 15000
+
 #define VREF 3.3
 
 #define NTC_B 3950.0

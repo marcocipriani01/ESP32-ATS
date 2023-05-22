@@ -3,11 +3,16 @@
 
 #include <Arduino.h>
 
+#include <WiFi.h>
+
 #include "config.h"
 #include "pinmap.h"
 #include "adc_lut.h"
 #include "settings.h"
+#include "ats_server.h"
 #include "MedianFilter.h"
+
+void wifiLoop(void* parameter);
 
 double readNTC(uint8_t id);
 double readVoltage();
