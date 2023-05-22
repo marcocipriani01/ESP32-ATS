@@ -7,9 +7,17 @@
 #define NTC_R0 100000.0
 #define NTC_T0 298.15
 #define NTC_VS 3.3
-#define NTC_R1 4700.0
+#define NTC_R1 47000.0
+#define NTC_WINDOW 5
 
-#define ADC_MAX 4095
+#define CLAMP_WINDOW 5
+#define VIN_DIVIDER_R1 100000.0
+#define VIN_DIVIDER_R2 12000.0
+#define VIN_REGRESSION_M 0.9361
+#define VIN_REGRESSION_Q +0.8146
+#define VIN_DIVIDER_WINDOW 10
+
+#define ADC_MAX 4095.0
 #define ADC_RESOLUTION 12
 
 #endif

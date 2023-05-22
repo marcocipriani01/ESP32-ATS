@@ -3,10 +3,7 @@
 
 #include <Arduino.h>
 
-#define NTC0 36
-#define NTC1 39
-#define NTC2 34
-#define NTC3 35
+#define NTC {36, 39, 34, 35}
 
 #define CLAMP 32
 #define VIN_DIVIDER 33

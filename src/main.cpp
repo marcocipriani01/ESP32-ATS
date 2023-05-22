@@ -1,12 +1,19 @@
 #include "main.h"
 
+#define NTC_COUNT (sizeof(ntcPins) / sizeof(uint8_t))
+
+uint8_t ntcPins[] = NTC;
+MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT] {NTC_WINDOW, NTC_WINDOW, NTC_WINDOW, NTC_WINDOW};
+
+MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
+MedianFilter clampFilter(CLAMP_WINDOW);
+
 void setup() {
     Serial.begin(BAUD_RATE);
 
-    pinMode(NTC0, INPUT);
-    pinMode(NTC1, INPUT);
-    pinMode(NTC2, INPUT);
-    pinMode(NTC3, INPUT);
+    for (uint8_t i = 0; i < NTC_COUNT; i++) {
+        pinMode(ntcPins[i], INPUT);
+    }
     
     pinMode(CLAMP, INPUT);
     pinMode(VIN_DIVIDER, INPUT);
@@ -35,18 +42,17 @@ void setup() {
 }
 
 void loop() {
-    Serial.print("NTC0: ");
-    Serial.print(readNtc(NTC0));
-    Serial.print(", NTC1: ");
-    Serial.print(readNtc(NTC1));
-    Serial.print(", NTC2: ");
-    Serial.print(readNtc(NTC2));
-    Serial.print(", NTC3: ");
-    Serial.println(readNtc(NTC3));
+    Serial.println(readVoltage());
+    delay(100);
 }
 
-double readNtc(uint8_t pin) {
-    double Vout = ADC_LUT[analogRead(pin)] * NTC_VS / ADC_MAX;
+double readNTC(uint8_t id) {
+    double Vout = ADC_LUT[analogRead(ntcPins[id])] * NTC_VS / ADC_MAX;
     double Rt = NTC_R1 * Vout / (NTC_VS - Vout);
-    return 1.0 / (1.0 / NTC_T0 + log(Rt / NTC_R0) / NTC_B) - 273.15;
+    return ntcFilters[id].add(1.0 / (1.0 / NTC_T0 + log(Rt / NTC_R0) / NTC_B) - 273.15);
+}
+
+double readVoltage() {
+    double vin = (ADC_LUT[analogRead(VIN_DIVIDER)] * NTC_VS / ADC_MAX) / (VIN_DIVIDER_R2 / (VIN_DIVIDER_R1 + VIN_DIVIDER_R2));
+    return vinFilter.add(VIN_REGRESSION_M * vin + VIN_REGRESSION_Q);
 }

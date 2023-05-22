@@ -6,7 +6,9 @@
 #include "config.h"
 #include "pinmap.h"
 #include "adc_lut.h"
+#include "MedianFilter.h"
 
-double readNtc(uint8_t pin);
+double readNTC(uint8_t id);
+double readVoltage();
 
 #endif
