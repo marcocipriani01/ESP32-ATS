@@ -11,11 +11,11 @@ void resetSettings() {
     settings.socRecovery = 30.0;
     settings.currentCuttOff = 0.9 * 600.0 / 230.0;
     settings.currentCuttOffTimeOut = 5 * 1000L;
-    settings.tempFanOn = 30.0;
-    settings.tempWarnHigh = 36.0;
-    settings.tempWarnLow = 34.0;
-    settings.tempCutOffHigh = 37.0;
-    settings.tempCutOffLow = 35.0;
+    settings.tempFanOn = 32.0;
+    settings.tempWarnHigh = 37.0;
+    settings.tempWarnLow = 0.0;
+    settings.tempCutOffHigh = 40.0;
+    settings.tempCutOffLow = 5.0;
 }
 
 void loadSettings() {

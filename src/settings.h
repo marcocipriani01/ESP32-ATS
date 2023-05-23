@@ -7,7 +7,7 @@
 #include "config.h"
 
 #define EEPROM_START 0
-#define EEPROM_MARKER 0xF0
+#define EEPROM_MARKER 0x0F
 
 typedef struct {
     uint8_t marker;

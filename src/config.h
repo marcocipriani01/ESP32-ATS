@@ -6,6 +6,7 @@
 #define SSID "4G-90007273"
 #define PASSWORD "V7special"
 #define WIFI_TIMEOUT 15000
+#define HOSTNAME "ESP32-ATS"
 
 #define SAMPLING_INTERVAL 1000L
 

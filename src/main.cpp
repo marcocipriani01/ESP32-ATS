@@ -6,6 +6,7 @@ const uint8_t ntcPins[] = NTC;
 MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT]{NTC_WINDOW, NTC_WINDOW, NTC_WINDOW, NTC_WINDOW};
 double ntcAverage = 0.0;
 double ntcVariation = 0.0;
+boolean fanOn = false;
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
@@ -24,6 +25,8 @@ unsigned long lastSample = 0L;
 
 TaskHandle_t wifiTask;
 
+boolean printData = false;
+
 void setup() {
     Serial.begin(BAUD_RATE);
 
@@ -37,7 +40,7 @@ void setup() {
     pinMode(VIN_DIVIDER, INPUT);
 
     pinMode(RELAY_ATS_GRID, OUTPUT);
-    digitalWrite(RELAY_ATS_GRID, LOW);
+    digitalWrite(RELAY_ATS_GRID, HIGH);
     pinMode(RELAY_ATS_SOLAR, OUTPUT);
     digitalWrite(RELAY_ATS_SOLAR, HIGH);
     pinMode(RELAY_FAN, OUTPUT);
@@ -59,6 +62,8 @@ void setup() {
     analogReadResolution(ADC_RESOLUTION);
 
     xTaskCreatePinnedToCore(wifiLoop, "WiFiLoop", 8192, NULL, 10, &wifiTask, (xPortGetCoreID() == 0) ? 1 : 0);
+
+    Serial.println("INFO:\tESP32-ATS started.");
 }
 
 void loop() {
@@ -72,51 +77,89 @@ void loop() {
         }
         ntcAverage = (tempMin + tempMax) / 2.0;
         ntcVariation = (tempMax - tempMin) / 2.0;
+        if (printData)
+            Serial.println("DATA:\tNTC average = " + String(ntcAverage) + "±" + String(ntcVariation) + "°C");
 
-        if (tempMax >= (settings.tempFanOn + (FAN_HISTERESIS / 2.0)))
+        if ((!fanOn) && (tempMax >= (settings.tempFanOn + (FAN_HISTERESIS / 2.0)))) {
             digitalWrite(RELAY_FAN, LOW);
-        else if (tempMin <= (settings.tempFanOn - (FAN_HISTERESIS / 2.0)))
+            fanOn = true;
+            Serial.println("INFO:\tFan turned on.");
+        } else if (fanOn && (tempMin < (settings.tempFanOn - (FAN_HISTERESIS / 2.0)))) {
             digitalWrite(RELAY_FAN, HIGH);
-
-        if (!warningSentNtc) {
-            if (tempMax >= settings.tempWarnHigh) {
-                warningSentNtc = true;
-                //TODO: send high temp warning
-            } else if (tempMin <= settings.tempWarnLow) {
-                warningSentNtc = true;
-                //TODO: send low temp warning
-            } else {
-                warningSentNtc = false;
-            }
+            fanOn = false;
+            Serial.println("INFO:\tFan turned off.");
         }
 
-        if (tempMax >= settings.tempCutOffHigh)
+        if ((!warningSentNtc) && (tempMax >= settings.tempWarnHigh)) {
+            //TODO: send high temp warning
+            Serial.println("WARN:\tTemperature above threshold.");
+            warningSentNtc = true;
+        } else if (warningSentNtc && (tempMin < settings.tempWarnHigh)) {
+            Serial.println("INFO:\tHigh temperature warning resolved.");
+            warningSentNtc = false;
+        } else if ((!warningSentNtc) && (tempMin <= settings.tempWarnLow)) {
+            //TODO: send low temp warning
+            Serial.println("WARN:\tTemperature below threshold.");
+            warningSentNtc = true;
+        } else if (warningSentNtc && (tempMax > settings.tempWarnLow)) {
+            Serial.println("INFO:\tLow temperature warning resolved.");
+            warningSentNtc = false;
+        }
+
+        if (enableATSNtc && (tempMax >= settings.tempCutOffHigh)) {
+            Serial.println("ERR:\tTemperature above high cut-off.");
             enableATSNtc = false;
-        else if (tempMin <= settings.tempCutOffLow)
+        } else if ((!enableATSNtc) && (tempMin < settings.tempCutOffHigh)) {
+            Serial.println("INFO:\tTemperature error resolved.");
             enableATSNtc = true;
+        } else if (enableATSNtc && (tempMin <= settings.tempCutOffLow)) {
+            Serial.println("ERR:\tTemperature below low cut-off.");
+            enableATSNtc = false;
+        } else if ((!enableATSNtc) && (tempMax > settings.tempCutOffLow)) {
+            Serial.println("INFO:\tTemperature error resolved.");
+            enableATSNtc = true;
+        }
 
         double vin = readVoltage();
-        if (vin >= settings.vBattRecovery)
+        if (printData)
+            Serial.println("DATA:\tVin = " + String(vin) + "V");
+        if ((!enableATSVin) && (vin > settings.vBattRecovery)) {
+            Serial.println("INFO:\tBattery voltage recovered.");
             enableATSVin = true;
-        else if (vin <= settings.vBattCuttOff)
+        } else if (enableATSVin && (vin <= settings.vBattCuttOff)) {
+            Serial.println("ERR:\tBattery voltage below cut-off.");
             enableATSVin = false;
+        }
 
         soc = calcSoc(vin);
-        if (soc >= settings.socRecovery)
+        if (printData)
+            Serial.println("DATA:\tSoC = " + String(soc) + "%");
+        if ((!enableATSSoc) && (soc > settings.socRecovery)) {
+            Serial.println("INFO:\tBattery SoC recovered.");
             enableATSSoc = true;
-        else if (soc <= settings.socCuttOff)
+        } else if (enableATSSoc && (soc <= settings.socCuttOff)) {
+            Serial.println("ERR:\tBattery SoC below cut-off.");
             enableATSSoc = false;
+        }
 
         double current = readCurrent();
-        if (current <= settings.currentCuttOff) {
-            if (clampErrorSince == 0L)
-                clampErrorSince = t;
-            else if ((t - clampErrorSince) >= (2 * CLAMP_MEASURE_TIME))
-                enableATSCurrent = false;
+        if (printData)
+            Serial.println("DATA:\tCurrent = " + String(current) + "A");
+        if (enableATSCurrent) {
+            if (current >= settings.currentCuttOff) {
+                if (clampErrorSince == 0L) {
+                    clampErrorSince = t;
+                } else if ((t - clampErrorSince) >= (2 * CLAMP_MEASURE_TIME)) {
+                    enableATSCurrent = false;
+                    clampErrorSince = 0L;
+                }
+            } else {
+                clampErrorSince = 0L;
+            }
         }
         
         enableATS = enableATSNtc && enableATSVin && enableATSSoc && enableATSCurrent;
-        digitalWrite(RELAY_ATS_SOLAR, !enableATS);
+        digitalWrite(RELAY_ATS_SOLAR, enableATS);
         if (enableATS) {
             digitalWrite(LED_GREEN, HIGH);
             digitalWrite(LED_RED, LOW);
@@ -129,26 +172,32 @@ void loop() {
 }
 
 void wifiLoop(void* parameter) {
-    Serial.println(">Starting Wi-Fi connection...");
+    Serial.println("LOG:\tStarting Wi-Fi connection...");
     while (!AtsServer::connect()) {
-        Serial.println(">WiFi connection failed, retrying...");
+        Serial.println("LOG:\tWiFi connection failed, retrying...");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
-    Serial.print(">IP Address: ");
+    Serial.print("LOG:\tIP Address: ");
     Serial.println(WiFi.localIP());
+    if (!MDNS.begin(HOSTNAME)) {
+        Serial.println("LOG:\tError setting up the MDNS responder!");
+    } else {
+        Serial.println("LOG:\tmDNS responder started");
+        MDNS.addService("http", "tcp", 80);
+    }
 
     AtsServer::server.on("/", HTTP_GET, AtsServer::root);
     AtsServer::server.onNotFound(AtsServer::notFound);
     AtsServer::server.begin();
 
-    Serial.println(">Server is up.");
+    Serial.println("LOG:\tServer is up.");
 
     while (1) {
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println(">WiFi connection failed, retrying...");
+            Serial.println("LOG:\tWiFi connection failed, retrying...");
             vTaskDelay(500 / portTICK_PERIOD_MS);
             AtsServer::connect();
-            Serial.print(">IP Address: ");
+            Serial.print("LOG:\tIP Address: ");
             Serial.println(WiFi.localIP());
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -159,15 +208,20 @@ void serialEvent() {
     while (Serial.available()) {
         if (Serial.read() != ':') continue;
         switch (Serial.read()) {
+            case 'D': {
+                printData = !printData;
+                break;
+            }
+
             case 'C': {
-                Serial.println(">Calibrating clamp...");
+                Serial.println("LOG:\tCalibrating clamp...");
                 double clampNoise = 0.0;
                 const uint8_t samples = 10;
                 for (uint8_t i = 0; i < samples; i++) {
                     clampNoise += readClampVRMS();
                 }
                 clampNoise /= samples;
-                Serial.print(">Clamp noise: ");
+                Serial.print("DATA:\tClamp noise: ");
                 Serial.print(clampNoise * 1000.0, 5);
                 Serial.println("mV");
                 settings.clampNoise = clampNoise;
