@@ -12,6 +12,7 @@
 #include "pinmap.h"
 #include "adc_lut.h"
 #include "settings.h"
+#include "pushover.h"
 #include "ats_server.h"
 #include "MedianFilter.h"
 

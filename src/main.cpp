@@ -91,14 +91,16 @@ void loop() {
         }
 
         if ((!warningSentNtc) && (tempMax >= settings.tempWarnHigh)) {
-            //TODO: send high temp warning
+            sendPushover("Monitoraggio temperaura ATS",
+                "Temperatura troppo alta, il sistema potrebbe venir disabilitato automaticamente.");
             Serial.println("WARN:\tTemperature above threshold.");
             warningSentNtc = true;
         } else if (warningSentNtc && (tempMin < settings.tempWarnHigh)) {
             Serial.println("INFO:\tHigh temperature warning resolved.");
             warningSentNtc = false;
         } else if ((!warningSentNtc) && (tempMin <= settings.tempWarnLow)) {
-            //TODO: send low temp warning
+            sendPushover("Monitoraggio temperaura ATS",
+                "Temperatura troppo bassa, sistema disabilitato.");
             Serial.println("WARN:\tTemperature below threshold.");
             warningSentNtc = true;
         } else if (warningSentNtc && (tempMax > settings.tempWarnLow)) {
@@ -150,6 +152,8 @@ void loop() {
                 if (clampErrorSince == 0L) {
                     clampErrorSince = t;
                 } else if ((t - clampErrorSince) >= (2 * CLAMP_MEASURE_TIME)) {
+                    sendPushover("Monitoraggio potenza ATS",
+                        "Corrente troppo alta, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
                     enableATSCurrent = false;
                     clampErrorSince = 0L;
                 }
@@ -226,6 +230,12 @@ void serialEvent() {
                 Serial.println("mV");
                 settings.clampNoise = clampNoise;
                 saveSettings();
+                break;
+            }
+
+            case 'P': {
+                int code = sendPushover("ESP32-ATS", "Messaggio di test!");
+                Serial.println("LOG:\tPushover test message sent, response code: " + String(code));
                 break;
             }
         }

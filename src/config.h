@@ -8,6 +8,9 @@
 #define WIFI_TIMEOUT 15000
 #define HOSTNAME "ESP32-ATS"
 
+#define PUSHOVER_USER "u766fgj7jkc9eb2v15aqt7hpt54evz"
+#define PUSHOVER_TOKEN "af1xmemq64era2ajbb68t9a8hxd5am"
+
 #define SAMPLING_INTERVAL 1000L
 
 #define FAN_HISTERESIS 3.0
