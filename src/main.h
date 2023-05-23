@@ -5,6 +5,8 @@
 
 #include <WiFi.h>
 
+#include "soc.h"
+#include "utils.h"
 #include "config.h"
 #include "pinmap.h"
 #include "adc_lut.h"
@@ -16,6 +18,7 @@ void wifiLoop(void* parameter);
 
 double readNTC(uint8_t id);
 double readVoltage();
+void resetCurrentError();
 double readClampVRMS();
 double readCurrent();
 double dmap(double x, double in_min, double in_max, double out_min, double out_max);

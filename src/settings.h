@@ -7,13 +7,15 @@
 #include "config.h"
 
 #define EEPROM_START 0
-#define EEPROM_MARKER 0x0F
+#define EEPROM_MARKER 0xF0
 
 typedef struct {
     uint8_t marker;
     double clampNoise;
     double vBattCuttOff;
     double vBattRecovery;
+    double socCuttOff;
+    double socRecovery;
     double currentCuttOff;
     unsigned long currentCuttOffTimeOut;
     double tempFanOn;

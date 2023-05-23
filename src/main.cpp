@@ -9,13 +9,16 @@ double ntcVariation = 0.0;
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
+double soc = 0.0;
+unsigned long clampErrorSince = 0L;
 
-boolean warningSent = false;
+boolean warningSentNtc = false;
 
-volatile boolean enableSolarNtc = true, enableGridNtc = true;
-volatile boolean enableSolarVin = true, enableGridVin = true;
-volatile boolean enableSolarCurrent = true, enableGridCurrent = true;
-volatile boolean atsSolarOn = true, atsGridOn = true;
+volatile boolean enableATS = true,
+    enableATSNtc = true,
+    enableATSVin = true,
+    enableATSCurrent = true,
+    enableATSSoc = true;
 
 unsigned long lastSample = 0L;
 
@@ -33,6 +36,10 @@ void setup() {
     pinMode(CLAMP, INPUT);
     pinMode(VIN_DIVIDER, INPUT);
 
+    pinMode(RELAY_ATS_GRID, OUTPUT);
+    digitalWrite(RELAY_ATS_GRID, LOW);
+    pinMode(RELAY_ATS_SOLAR, OUTPUT);
+    digitalWrite(RELAY_ATS_SOLAR, HIGH);
     pinMode(RELAY_FAN, OUTPUT);
     digitalWrite(RELAY_FAN, HIGH);
     pinMode(RELAY_AUX, OUTPUT);
@@ -71,39 +78,52 @@ void loop() {
         else if (tempMin <= (settings.tempFanOn - (FAN_HISTERESIS / 2.0)))
             digitalWrite(RELAY_FAN, HIGH);
 
-        if (!warningSent) {
+        if (!warningSentNtc) {
             if (tempMax >= settings.tempWarnHigh) {
-                warningSent = true;
+                warningSentNtc = true;
                 //TODO: send high temp warning
             } else if (tempMin <= settings.tempWarnLow) {
-                warningSent = true;
+                warningSentNtc = true;
                 //TODO: send low temp warning
             } else {
-                warningSent = false;
+                warningSentNtc = false;
             }
         }
 
         if (tempMax >= settings.tempCutOffHigh)
-            enableSolarNtc = false;
+            enableATSNtc = false;
         else if (tempMin <= settings.tempCutOffLow)
-            enableSolarNtc = true;
+            enableATSNtc = true;
 
         double vin = readVoltage();
         if (vin >= settings.vBattRecovery)
-            enableSolarVin = true;
+            enableATSVin = true;
         else if (vin <= settings.vBattCuttOff)
-            enableSolarVin = false;
+            enableATSVin = false;
+
+        soc = calcSoc(vin);
+        if (soc >= settings.socRecovery)
+            enableATSSoc = true;
+        else if (soc <= settings.socCuttOff)
+            enableATSSoc = false;
 
         double current = readCurrent();
-        if (current <= settings.currentCuttOff)
-            enableSolarCurrent = false;
+        if (current <= settings.currentCuttOff) {
+            if (clampErrorSince == 0L)
+                clampErrorSince = t;
+            else if ((t - clampErrorSince) >= (2 * CLAMP_MEASURE_TIME))
+                enableATSCurrent = false;
+        }
         
-        atsSolarOn = enableSolarNtc && enableSolarVin && enableSolarCurrent;
-        pinMode(RELAY_ATS_SOLAR, OUTPUT);
-        digitalWrite(RELAY_ATS_SOLAR, !atsSolarOn);
-        atsGridOn = enableGridNtc && enableGridVin && enableGridCurrent;
-        pinMode(RELAY_ATS_GRID, OUTPUT);
-        digitalWrite(RELAY_ATS_GRID, !atsGridOn);
+        enableATS = enableATSNtc && enableATSVin && enableATSSoc && enableATSCurrent;
+        digitalWrite(RELAY_ATS_SOLAR, !enableATS);
+        if (enableATS) {
+            digitalWrite(LED_GREEN, HIGH);
+            digitalWrite(LED_RED, LOW);
+        } else {
+            digitalWrite(LED_GREEN, LOW);
+            digitalWrite(LED_RED, HIGH);
+        }
         lastSample = t;
     }
 }
@@ -169,7 +189,12 @@ double readVoltage() {
     double vin = (ADC_LUT[analogRead(VIN_DIVIDER)] * VREF / ADC_MAX) / (VIN_DIVIDER_R2 / (VIN_DIVIDER_R1 + VIN_DIVIDER_R2));
     vin = vinFilter.add(VIN_REGRESSION_M * vin + VIN_REGRESSION_Q);
     return constrain(vin, 0.0, VIN_MAX);
-} 
+}
+
+void resetCurrentError() {
+    clampErrorSince = 0L;
+    enableATSCurrent = true;
+}
 
 double readClampVRMS() {
     double maxValue = 0.0;
@@ -187,11 +212,4 @@ double readClampVRMS() {
 
 double readCurrent() {
     return dmap(clampFilter.add(readClampVRMS()), settings.clampNoise, CLAMP_CALIBRATION_X, 0.0, CLAMP_CALIBRATION_Y);
-}
-
-double dmap(double x, double in_min, double in_max, double out_min, double out_max) {
-    double val = (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-    if (val < out_min) return out_min;
-    if (val > out_max) return out_max;
-    return val;
 }

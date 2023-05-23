@@ -7,7 +7,7 @@
 #define PASSWORD "V7special"
 #define WIFI_TIMEOUT 15000
 
-#define SAMPLING_INTERVAL 500L
+#define SAMPLING_INTERVAL 1000L
 
 #define FAN_HISTERESIS 3.0
 
