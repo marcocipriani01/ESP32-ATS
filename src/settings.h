@@ -14,6 +14,8 @@ typedef struct {
     double clampNoise;
     double vBattCuttOff;
     double vBattRecovery;
+    double currentCuttOff;
+    unsigned long currentCuttOffTimeOut;
     double tempFanOn;
     double tempWarnHigh;
     double tempWarnLow;

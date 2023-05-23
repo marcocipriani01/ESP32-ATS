@@ -13,6 +13,8 @@ MedianFilter clampFilter(CLAMP_WINDOW);
 boolean warningSent = false;
 
 volatile boolean enableSolarNtc = true, enableGridNtc = true;
+volatile boolean enableSolarVin = true, enableGridVin = true;
+volatile boolean enableSolarCurrent = true, enableGridCurrent = true;
 volatile boolean atsSolarOn = true, atsGridOn = true;
 
 unsigned long lastSample = 0L;
@@ -86,12 +88,20 @@ void loop() {
         else if (tempMin <= settings.tempCutOffLow)
             enableSolarNtc = true;
 
+        double vin = readVoltage();
+        if (vin >= settings.vBattRecovery)
+            enableSolarVin = true;
+        else if (vin <= settings.vBattCuttOff)
+            enableSolarVin = false;
+
+        double current = readCurrent();
+        if (current <= settings.currentCuttOff)
+            enableSolarCurrent = false;
         
-        
-        atsSolarOn = enableSolarNtc;
+        atsSolarOn = enableSolarNtc && enableSolarVin && enableSolarCurrent;
         pinMode(RELAY_ATS_SOLAR, OUTPUT);
         digitalWrite(RELAY_ATS_SOLAR, !atsSolarOn);
-        atsGridOn = enableGridNtc;
+        atsGridOn = enableGridNtc && enableGridVin && enableGridCurrent;
         pinMode(RELAY_ATS_GRID, OUTPUT);
         digitalWrite(RELAY_ATS_GRID, !atsGridOn);
         lastSample = t;
