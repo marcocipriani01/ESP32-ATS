@@ -4,28 +4,34 @@
 
 const uint8_t ntcPins[] = NTC;
 MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT]{NTC_WINDOW, NTC_WINDOW, NTC_WINDOW, NTC_WINDOW};
-double ntcAverage = 0.0;
-double ntcVariation = 0.0;
-boolean fanOn = false;
+volatile double ntcAverage = 0.0;
+volatile double ntcVariation = 0.0;
+volatile boolean fanOn = false;
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
-double soc = 0.0;
+volatile double soc = 0.0;
 unsigned long clampErrorSince = 0L;
 
-boolean warningSentNtc = false;
+volatile boolean warningSentNtcHigh = false,
+    warningSentNtcLow = false;
 
 volatile boolean enableATS = true,
-    enableATSNtc = true,
+    enableATSNtcHigh = true,
+    enableATSNtcLow = true,
     enableATSVin = true,
     enableATSCurrent = true,
-    enableATSSoc = true;
+    enableATSSoc = true,
+    enableATSRelayMatch = true;
 
 unsigned long lastSample = 0L;
 
 TaskHandle_t wifiTask;
 
 boolean printData = false;
+
+volatile boolean atsSolarDetected = false,
+    gridPowerLoss = false;
 
 void setup() {
     Serial.begin(BAUD_RATE);
@@ -90,36 +96,38 @@ void loop() {
             Serial.println("INFO:\tFan turned off.");
         }
 
-        if ((!warningSentNtc) && (tempMax >= settings.tempWarnHigh)) {
+        if ((!warningSentNtcHigh) && (tempMax >= settings.tempWarnHigh)) {
             sendPushover("Monitoraggio temperaura ATS",
                 "Temperatura troppo alta, il sistema potrebbe venir disabilitato automaticamente.");
             Serial.println("WARN:\tTemperature above threshold.");
-            warningSentNtc = true;
-        } else if (warningSentNtc && (tempMin < settings.tempWarnHigh)) {
+            warningSentNtcHigh = true;
+        } else if (warningSentNtcHigh && (tempMin < settings.tempWarnHigh)) {
             Serial.println("INFO:\tHigh temperature warning resolved.");
-            warningSentNtc = false;
-        } else if ((!warningSentNtc) && (tempMin <= settings.tempWarnLow)) {
+            warningSentNtcHigh = false;
+        }
+        if ((!warningSentNtcLow) && (tempMin <= settings.tempWarnLow)) {
             sendPushover("Monitoraggio temperaura ATS",
                 "Temperatura troppo bassa, sistema disabilitato.");
             Serial.println("WARN:\tTemperature below threshold.");
-            warningSentNtc = true;
-        } else if (warningSentNtc && (tempMax > settings.tempWarnLow)) {
+            warningSentNtcLow = true;
+        } else if (warningSentNtcLow && (tempMax > settings.tempWarnLow)) {
             Serial.println("INFO:\tLow temperature warning resolved.");
-            warningSentNtc = false;
+            warningSentNtcLow = false;
         }
 
-        if (enableATSNtc && (tempMax >= settings.tempCutOffHigh)) {
+        if (enableATSNtcHigh && (tempMax >= settings.tempCutOffHigh)) {
             Serial.println("ERR:\tTemperature above high cut-off.");
-            enableATSNtc = false;
-        } else if ((!enableATSNtc) && (tempMin < settings.tempCutOffHigh)) {
+            enableATSNtcHigh = false;
+        } else if ((!enableATSNtcHigh) && (tempMin < settings.tempCutOffHigh)) {
             Serial.println("INFO:\tTemperature error resolved.");
-            enableATSNtc = true;
-        } else if (enableATSNtc && (tempMin <= settings.tempCutOffLow)) {
+            enableATSNtcHigh = true;
+        }
+        if (enableATSNtcLow && (tempMin <= settings.tempCutOffLow)) {
             Serial.println("ERR:\tTemperature below low cut-off.");
-            enableATSNtc = false;
-        } else if ((!enableATSNtc) && (tempMax > settings.tempCutOffLow)) {
+            enableATSNtcLow = false;
+        } else if ((!enableATSNtcLow) && (tempMax > settings.tempCutOffLow)) {
             Serial.println("INFO:\tTemperature error resolved.");
-            enableATSNtc = true;
+            enableATSNtcLow = true;
         }
 
         double vin = readVoltage();
@@ -161,16 +169,20 @@ void loop() {
                 clampErrorSince = 0L;
             }
         }
-        
-        enableATS = enableATSNtc && enableATSVin && enableATSSoc && enableATSCurrent;
-        digitalWrite(RELAY_ATS_SOLAR, enableATS);
-        if (enableATS) {
-            digitalWrite(LED_GREEN, HIGH);
-            digitalWrite(LED_RED, LOW);
-        } else {
-            digitalWrite(LED_GREEN, LOW);
-            digitalWrite(LED_RED, HIGH);
+
+        atsSolarDetected = digitalRead(ATS_SENSE_SOLAR);
+        gridPowerLoss = !digitalRead(ATS_SENSE_GRID);
+        if (enableATSRelayMatch && (enableATS != atsSolarDetected)) {
+            Serial.println("ERR:\tATS relay problem: detected status doesn't match expected status.");
+            sendPushover("Monitoraggio potenza ATS",
+                    "Problema al relè, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
+            enableATSRelayMatch = false;
         }
+        
+        enableATS = enableATSNtcHigh && enableATSNtcLow && enableATSVin && enableATSSoc && enableATSCurrent && enableATSRelayMatch;
+        digitalWrite(RELAY_ATS_SOLAR, enableATS);
+        digitalWrite(LED_GREEN, enableATS);
+        digitalWrite(LED_RED, !enableATS);
         lastSample = t;
     }
 }
