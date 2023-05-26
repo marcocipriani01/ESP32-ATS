@@ -6,22 +6,22 @@ const uint8_t ntcPins[] = NTC;
 MedianFilter* ntcFilters = new MedianFilter[NTC_COUNT]{NTC_WINDOW, NTC_WINDOW, NTC_WINDOW, NTC_WINDOW};
 volatile double ntcAverage = 0.0;
 volatile double ntcVariation = 0.0;
-volatile boolean fanOn = false;
+volatile boolean fanOnNtc = false,
+    fanOnFire = false;
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
 volatile double soc = 0.0;
 unsigned long clampErrorSince = 0L;
 
-volatile boolean warningSentNtcHigh = false,
-    warningSentNtcLow = false;
-
 volatile boolean enableATS = true,
     enableATSNtcHigh = true,
     enableATSNtcLow = true,
+    enableATSNtcDanger = true,
     enableATSVin = true,
     enableATSCurrent = true,
     enableATSSoc = true,
+    enableATSFire = true,
     enableATSRelayMatch = true;
 
 unsigned long lastSample = 0L;
@@ -78,6 +78,8 @@ void loop() {
         double tempMin = 350.0, tempMax = -100.0;
         for (uint8_t i = 0; i < NTC_COUNT; i++) {
             double val = readNTC(i);
+            if (printData)
+                Serial.println("DATA:\tNTC" + String(i) + " = " + String(val) + "°C");
             if (val < tempMin) tempMin = val;
             if (val > tempMax) tempMax = val;
         }
@@ -86,46 +88,35 @@ void loop() {
         if (printData)
             Serial.println("DATA:\tNTC average = " + String(ntcAverage) + "±" + String(ntcVariation) + "°C");
 
-        if ((!fanOn) && (tempMax >= (settings.tempFanOn + (FAN_HISTERESIS / 2.0)))) {
-            digitalWrite(RELAY_FAN, LOW);
-            fanOn = true;
+        if ((!fanOnNtc) && (tempMax >= (settings.tempFanOn + (TEMP_HISTERESIS / 2.0)))) {
+            fanOnNtc = true;
             Serial.println("INFO:\tFan turned on.");
-        } else if (fanOn && (tempMin < (settings.tempFanOn - (FAN_HISTERESIS / 2.0)))) {
-            digitalWrite(RELAY_FAN, HIGH);
-            fanOn = false;
+        } else if (fanOnNtc && (tempMax < (settings.tempFanOn - (TEMP_HISTERESIS / 2.0)))) {
+            fanOnNtc = false;
             Serial.println("INFO:\tFan turned off.");
         }
 
-        if ((!warningSentNtcHigh) && (tempMax >= settings.tempWarnHigh)) {
-            sendPushover("Monitoraggio temperaura ATS",
-                "Temperatura troppo alta, il sistema potrebbe venir disabilitato automaticamente.");
-            Serial.println("WARN:\tTemperature above threshold.");
-            warningSentNtcHigh = true;
-        } else if (warningSentNtcHigh && (tempMin < settings.tempWarnHigh)) {
-            Serial.println("INFO:\tHigh temperature warning resolved.");
-            warningSentNtcHigh = false;
-        }
-        if ((!warningSentNtcLow) && (tempMin <= settings.tempWarnLow)) {
-            sendPushover("Monitoraggio temperaura ATS",
-                "Temperatura troppo bassa, sistema disabilitato.");
-            Serial.println("WARN:\tTemperature below threshold.");
-            warningSentNtcLow = true;
-        } else if (warningSentNtcLow && (tempMax > settings.tempWarnLow)) {
-            Serial.println("INFO:\tLow temperature warning resolved.");
-            warningSentNtcLow = false;
-        }
-
-        if (enableATSNtcHigh && (tempMax >= settings.tempCutOffHigh)) {
+        if (enableATSNtcHigh && (tempMax >= (settings.tempCutOffHigh + (TEMP_HISTERESIS / 2.0)))) {
             Serial.println("ERR:\tTemperature above high cut-off.");
+            sendPushover("Monitoraggio temperaura ATS",
+                "Temperatura troppo alta, sistema disabilitato.");
             enableATSNtcHigh = false;
-        } else if ((!enableATSNtcHigh) && (tempMin < settings.tempCutOffHigh)) {
+        } else if ((!enableATSNtcHigh) && (tempMax < (settings.tempCutOffHigh - (TEMP_HISTERESIS / 2.0)))) {
             Serial.println("INFO:\tTemperature error resolved.");
             enableATSNtcHigh = true;
         }
-        if (enableATSNtcLow && (tempMin <= settings.tempCutOffLow)) {
+        if (enableATSNtcDanger && (tempMax >= (settings.tempDanger + (TEMP_HISTERESIS / 2.0)))) {
+            Serial.println("ERR:\tTemperature above high cut-off.");
+            sendPushover("Monitoraggio temperaura ATS",
+                "Temperatura troppo alta, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
+            enableATSNtcDanger = false;
+        }
+        if (enableATSNtcLow && (tempMin <= (settings.tempCutOffLow - (TEMP_HISTERESIS / 2.0)))) {
             Serial.println("ERR:\tTemperature below low cut-off.");
+            sendPushover("Monitoraggio temperaura ATS",
+                "Temperatura troppo bassa, sistema disabilitato.");
             enableATSNtcLow = false;
-        } else if ((!enableATSNtcLow) && (tempMax > settings.tempCutOffLow)) {
+        } else if ((!enableATSNtcLow) && (tempMin > (settings.tempCutOffLow + (TEMP_HISTERESIS / 2.0)))) {
             Serial.println("INFO:\tTemperature error resolved.");
             enableATSNtcLow = true;
         }
@@ -170,8 +161,24 @@ void loop() {
             }
         }
 
-        atsSolarDetected = digitalRead(ATS_SENSE_SOLAR);
-        gridPowerLoss = !digitalRead(ATS_SENSE_GRID);
+        boolean fireDetected = !digitalRead(FIRE_SENS0);
+        if (printData)
+            Serial.println("DATA:\tFire detected = " + String(fireDetected));
+        if (enableATSFire && fireDetected) {
+            sendPushover("Monitoraggio temperatura ATS",
+                "Rilevato incendio, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
+            Serial.println("ERR:\tFire detected!");
+            enableATSFire = false;
+            fanOnFire = true;
+        }
+
+        atsSolarDetected = enableATS;
+        //atsSolarDetected = !digitalRead(ATS_SENSE_SOLAR);
+        gridPowerLoss = digitalRead(ATS_SENSE_GRID);
+        if (printData) {
+            Serial.println("DATA:\tATS solar output sense = " + String(atsSolarDetected));
+            Serial.println("DATA:\tGrid power loss = " + String(gridPowerLoss));
+        }
         if (enableATSRelayMatch && (enableATS != atsSolarDetected)) {
             Serial.println("ERR:\tATS relay problem: detected status doesn't match expected status.");
             sendPushover("Monitoraggio potenza ATS",
@@ -179,8 +186,10 @@ void loop() {
             enableATSRelayMatch = false;
         }
         
-        enableATS = enableATSNtcHigh && enableATSNtcLow && enableATSVin && enableATSSoc && enableATSCurrent && enableATSRelayMatch;
+        enableATS = enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger &&
+            enableATSVin && enableATSSoc && enableATSCurrent && enableATSFire && enableATSRelayMatch;
         digitalWrite(RELAY_ATS_SOLAR, enableATS);
+        digitalWrite(RELAY_FAN, !(fanOnNtc || fanOnFire));
         digitalWrite(LED_GREEN, enableATS);
         digitalWrite(LED_RED, !enableATS);
         lastSample = t;

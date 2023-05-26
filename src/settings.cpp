@@ -12,10 +12,9 @@ void resetSettings() {
     settings.currentCuttOff = 0.9 * 600.0 / 230.0;
     settings.currentCuttOffTimeOut = 5 * 1000L;
     settings.tempFanOn = 32.0;
-    settings.tempWarnHigh = 37.0;
-    settings.tempWarnLow = 0.0;
     settings.tempCutOffHigh = 40.0;
     settings.tempCutOffLow = 5.0;
+    settings.tempDanger = 50.0;
 }
 
 void loadSettings() {
