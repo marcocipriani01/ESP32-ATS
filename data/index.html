@@ -57,9 +57,7 @@
         <h1>Dashboard ESP32-ATS</h1>
 
         <div id="spinner-container">
-            <div class="spinner-border text-primary" role="status">
-                <span class="sr-only">Caricamento...</span>
-            </div>
+            <div class="spinner-border text-primary" role="status"></div>
         </div>
 
         <div class="row">
@@ -231,8 +229,10 @@
                 .catch(error => {
                     console.error('Error: ', error);
                     document.getElementById("spinner-container").style.display = "none";
-                    if (showError)
+                    if (showError) {
                         alert("Errore, riprova più tardi.");
+                        showError = false;
+                    }
                 });
         }
 
