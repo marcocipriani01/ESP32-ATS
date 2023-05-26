@@ -1,6 +1,6 @@
 #include "ats_server.h"
 
-namespace AtsServer {
+namespace ATSServer {
 AsyncWebServer server(80);
 
 boolean connect() {
@@ -18,4 +18,4 @@ boolean connect() {
 void notFound(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
 }
-}  // namespace AtsServer
+}  // namespace ATSServer

@@ -14,7 +14,8 @@
 #define PUSHOVER_USER "u766fgj7jkc9eb2v15aqt7hpt54evz"
 #define PUSHOVER_TOKEN "af1xmemq64era2ajbb68t9a8hxd5am"
 
-#define EEPROM_MARKER 0xF1
+#define EEPROM_START 0
+#define EEPROM_MARKER 0xF0
 
 #define SAMPLING_INTERVAL 1000L
 

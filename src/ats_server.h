@@ -8,12 +8,12 @@
 
 #include "config.h"
 
-namespace AtsServer {
+namespace ATSServer {
 extern AsyncWebServer server;
 
 boolean connect();
 
 void notFound(AsyncWebServerRequest *request);
-}  // namespace AtsServer
+}  // namespace ATSServer
 
 #endif

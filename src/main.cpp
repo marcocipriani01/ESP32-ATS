@@ -23,6 +23,9 @@ volatile boolean enableATS = true,
     enableATSSoc = true,
     enableATSFire = true;
 
+volatile unsigned long atsActiveSince = 0L,
+    atsOffSince = 0L;
+
 unsigned long lastSample = 0L;
 
 TaskHandle_t wifiTask;
@@ -172,8 +175,16 @@ void loop() {
             fanOnFire = true;
         }
         
-        enableATS = enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger &&
+        boolean newATSVal = enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger &&
             enableATSVin && enableATSSoc && enableATSCurrent && enableATSFire;
+        if (newATSVal && (!enableATS)) {
+            atsActiveSince = t;
+            atsOffSince = 0L;
+        } else if ((!newATSVal) && enableATS) {
+            atsOffSince = t;
+            atsActiveSince = 0L;
+        }
+        enableATS = newATSVal;
         digitalWrite(RELAY_ATS_SOLAR, !enableATS);
         digitalWrite(RELAY_FAN, !(fanOnNtc || fanOnFire));
         digitalWrite(LED_GREEN, enableATS);
@@ -185,7 +196,7 @@ void loop() {
 void wifiLoop(void* parameter) {
     delay(500);
     Serial.println("LOG:\tStarting Wi-Fi connection...");
-    while (!AtsServer::connect()) {
+    while (!ATSServer::connect()) {
         Serial.println("LOG:\tWiFi connection failed, retrying...");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
@@ -198,12 +209,35 @@ void wifiLoop(void* parameter) {
         MDNS.addService("http", "tcp", 80);
     }
 
-    AtsServer::server
+    ATSServer::server
         .serveStatic("/", SPIFFS, "/")
         .setDefaultFile("index.html")
         .setAuthentication(USER, USER_PASSWORD);
-    AtsServer::server.onNotFound(AtsServer::notFound);
-    AtsServer::server.begin();
+    ATSServer::server.onNotFound(ATSServer::notFound);
+
+    ATSServer::server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest *request) {
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        DynamicJsonDocument json(1024);
+        json["ntcAverage"] = ntcAverage;
+        json["ntcVariation"] = ntcVariation;
+        json["fanOn"] = (boolean) (fanOnNtc || fanOnFire);
+        json["vin"] = vinFilter.isReady() ? vinFilter.get() : 0.0;
+        json["soc"] = soc;
+        json["current"] = clampFilter.isReady() ? clampFilter.get() : 0.0;
+        json["enableATS"] = (boolean) enableATS;
+        json["enableATSNtc"] = (boolean) (enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger);
+        json["enableATSSoc"] = (boolean) (enableATSVin && enableATSSoc);
+        json["enableATSCurrent"] = (boolean) enableATSCurrent;
+        json["enableATSFire"] = (boolean) enableATSFire;
+        json["ip"] = WiFi.localIP().toString();
+        json["uptime"] = millis();
+        json["atsActiveSince"] = atsActiveSince;
+        json["atsOffSince"] = atsOffSince;
+        serializeJson(json, *response);
+        request->send(response);
+    });
+
+    ATSServer::server.begin();
 
     Serial.println("LOG:\tServer is up.");
 
@@ -211,7 +245,7 @@ void wifiLoop(void* parameter) {
         if (WiFi.status() != WL_CONNECTED) {
             Serial.println("LOG:\tWiFi connection failed, retrying...");
             vTaskDelay(500 / portTICK_PERIOD_MS);
-            AtsServer::connect();
+            ATSServer::connect();
             Serial.print("LOG:\tIP Address: ");
             Serial.println(WiFi.localIP());
         }

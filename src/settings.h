@@ -6,8 +6,6 @@
 
 #include "config.h"
 
-#define EEPROM_START 0
-
 typedef struct {
     uint8_t marker;
     double clampNoise;
