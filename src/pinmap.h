@@ -13,9 +13,6 @@
 #define RELAY_ATS_GRID 18
 #define RELAY_AUX 17
 
-#define ATS_SENSE_SOLAR 4
-#define ATS_SENSE_GRID 15
-
 #define FIRE_SENS0 21
 #define FIRE_SENS1 16
 

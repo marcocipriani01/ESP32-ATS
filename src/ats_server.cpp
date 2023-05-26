@@ -5,7 +5,7 @@ AsyncWebServer server(80);
 
 boolean connect() {
     WiFi.mode(WIFI_STA);
-    WiFi.begin(SSID, PASSWORD);
+    WiFi.begin(SSID, WIFI_PASSWORD);
 
     unsigned long start = millis();
     while ((WiFi.status() != WL_CONNECTED) && ((millis() - start) <= WIFI_TIMEOUT)) {
@@ -13,10 +13,6 @@ boolean connect() {
     }
 
     return (WiFi.status() == WL_CONNECTED);
-}
-
-void root(AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hello, world");
 }
 
 void notFound(AsyncWebServerRequest *request) {

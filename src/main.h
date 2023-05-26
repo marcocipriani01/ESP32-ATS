@@ -4,6 +4,7 @@
 #include <Arduino.h>
 
 #include <WiFi.h>
+#include <SPIFFS.h>
 #include <ESPmDNS.h>
 
 #include "soc.h"

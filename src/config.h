@@ -3,10 +3,13 @@
 
 #define BAUD_RATE 115200
 
-#define SSID "4G-90007273"
-#define PASSWORD "V7special"
+#define SSID "GL-AR150-321"
+#define WIFI_PASSWORD "goodlife"
 #define WIFI_TIMEOUT 15000
 #define HOSTNAME "ESP32-ATS"
+
+#define USER "nikcoli"
+#define USER_PASSWORD "Caprile2020!"
 
 #define PUSHOVER_USER "u766fgj7jkc9eb2v15aqt7hpt54evz"
 #define PUSHOVER_TOKEN "af1xmemq64era2ajbb68t9a8hxd5am"

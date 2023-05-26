@@ -13,7 +13,6 @@ extern AsyncWebServer server;
 
 boolean connect();
 
-void root(AsyncWebServerRequest *request);
 void notFound(AsyncWebServerRequest *request);
 }  // namespace AtsServer
 

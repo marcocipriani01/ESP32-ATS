@@ -21,17 +21,13 @@ volatile boolean enableATS = true,
     enableATSVin = true,
     enableATSCurrent = true,
     enableATSSoc = true,
-    enableATSFire = true,
-    enableATSRelayMatch = true;
+    enableATSFire = true;
 
 unsigned long lastSample = 0L;
 
 TaskHandle_t wifiTask;
 
 boolean printData = false;
-
-volatile boolean atsSolarDetected = false,
-    gridPowerLoss = false;
 
 void setup() {
     Serial.begin(BAUD_RATE);
@@ -54,11 +50,8 @@ void setup() {
     pinMode(RELAY_AUX, OUTPUT);
     digitalWrite(RELAY_AUX, HIGH);
 
-    pinMode(ATS_SENSE_SOLAR, INPUT);
-    pinMode(ATS_SENSE_GRID, INPUT);
-
     pinMode(FIRE_SENS0, INPUT);
-    pinMode(FIRE_SENS1, INPUT);
+    pinMode(FIRE_SENS1, INPUT_PULLUP);
 
     pinMode(LED_RED, OUTPUT);
     digitalWrite(LED_RED, LOW);
@@ -66,6 +59,13 @@ void setup() {
     digitalWrite(LED_GREEN, LOW);
 
     analogReadResolution(ADC_RESOLUTION);
+
+    if (!SPIFFS.begin(true)){
+        while (1) {
+            Serial.println("ERR:\tAn Error has occurred while mounting SPIFFS.");
+            delay(1000);
+        }
+    }
 
     xTaskCreatePinnedToCore(wifiLoop, "WiFiLoop", 8192, NULL, 10, &wifiTask, (xPortGetCoreID() == 0) ? 1 : 0);
 
@@ -171,24 +171,10 @@ void loop() {
             enableATSFire = false;
             fanOnFire = true;
         }
-
-        atsSolarDetected = enableATS;
-        //atsSolarDetected = !digitalRead(ATS_SENSE_SOLAR);
-        gridPowerLoss = digitalRead(ATS_SENSE_GRID);
-        if (printData) {
-            Serial.println("DATA:\tATS solar output sense = " + String(atsSolarDetected));
-            Serial.println("DATA:\tGrid power loss = " + String(gridPowerLoss));
-        }
-        if (enableATSRelayMatch && (enableATS != atsSolarDetected)) {
-            Serial.println("ERR:\tATS relay problem: detected status doesn't match expected status.");
-            sendPushover("Monitoraggio potenza ATS",
-                    "Problema al relè, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
-            enableATSRelayMatch = false;
-        }
         
         enableATS = enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger &&
-            enableATSVin && enableATSSoc && enableATSCurrent && enableATSFire && enableATSRelayMatch;
-        digitalWrite(RELAY_ATS_SOLAR, enableATS);
+            enableATSVin && enableATSSoc && enableATSCurrent && enableATSFire;
+        digitalWrite(RELAY_ATS_SOLAR, !enableATS);
         digitalWrite(RELAY_FAN, !(fanOnNtc || fanOnFire));
         digitalWrite(LED_GREEN, enableATS);
         digitalWrite(LED_RED, !enableATS);
@@ -197,6 +183,7 @@ void loop() {
 }
 
 void wifiLoop(void* parameter) {
+    delay(500);
     Serial.println("LOG:\tStarting Wi-Fi connection...");
     while (!AtsServer::connect()) {
         Serial.println("LOG:\tWiFi connection failed, retrying...");
@@ -211,7 +198,10 @@ void wifiLoop(void* parameter) {
         MDNS.addService("http", "tcp", 80);
     }
 
-    AtsServer::server.on("/", HTTP_GET, AtsServer::root);
+    AtsServer::server
+        .serveStatic("/", SPIFFS, "/")
+        .setDefaultFile("index.html")
+        .setAuthentication(USER, USER_PASSWORD);
     AtsServer::server.onNotFound(AtsServer::notFound);
     AtsServer::server.begin();
 
