@@ -13,6 +13,10 @@ MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
 volatile double soc = 0.0;
 unsigned long clampErrorSince = 0L;
+volatile double energy = 0.0;
+double lastVin = 0.0;
+volatile double vindt = 0.0;
+unsigned long lastVindtMeasure = 0L;
 
 volatile boolean enableATS = true,
     enableATSNtcHigh = true,
@@ -135,6 +139,15 @@ void loop() {
             enableATSVin = false;
         }
 
+        if (lastVindtMeasure == 0L) {
+            lastVindtMeasure = t;
+            lastVin = vin;
+        } else if ((t - lastVindtMeasure) >= VIN_dt_INTERVAL) {
+            vindt = 1000.0 * (vin - lastVin) / ((double) (t - lastVindtMeasure));
+            lastVin = vin;
+            lastVindtMeasure = t;
+        }
+
         soc = calcSoc(vin);
         if (printData)
             Serial.println("DATA:\tSoC = " + String(soc) + "%");
@@ -184,6 +197,10 @@ void loop() {
             atsOffSince = t;
             atsActiveSince = 0L;
         }
+        if (newATSVal)
+            energy += V_AC * current * (t - lastSample) / 0.0036;
+        else
+            energy = 0.0;
         enableATS = newATSVal;
         digitalWrite(RELAY_ATS_SOLAR, !enableATS);
         digitalWrite(RELAY_FAN, !(fanOnNtc || fanOnFire));
@@ -218,21 +235,27 @@ void wifiLoop(void* parameter) {
     ATSServer::server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest *request) {
         AsyncResponseStream *response = request->beginResponseStream("application/json");
         DynamicJsonDocument json(1024);
-        json["ntcAverage"] = ntcAverage;
-        json["ntcVariation"] = ntcVariation;
-        json["fanOn"] = (boolean) (fanOnNtc || fanOnFire);
+        unsigned long t = millis();
+        json["ntc_avg"] = ntcAverage;
+        json["ntc_var"] = ntcVariation;
+        json["fan"] = (boolean) (fanOnNtc || fanOnFire);
         json["vin"] = vinFilter.isReady() ? vinFilter.get() : 0.0;
+        json["vin_led"] = enableATSVin;
         json["soc"] = soc;
-        json["current"] = clampFilter.isReady() ? clampFilter.get() : 0.0;
-        json["enableATS"] = (boolean) enableATS;
-        json["enableATSNtc"] = (boolean) (enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger);
-        json["enableATSSoc"] = (boolean) (enableATSVin && enableATSSoc);
-        json["enableATSCurrent"] = (boolean) enableATSCurrent;
-        json["enableATSFire"] = (boolean) enableATSFire;
+        double current = clampFilter.isReady() ? clampFilter.get() : 0.0;
+        json["current"] = current;
+        json["power"] = current * V_AC;
+        json["relay_state"] = enableATS;
+        json["ntc_ok"] = (boolean) (enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger);
+        json["soc_led"] = enableATSSoc;
+        json["current_led"] = enableATSCurrent;
+        json["flame"] = enableATSFire;
         json["ip"] = WiFi.localIP().toString();
         json["uptime"] = millis();
-        json["atsActiveSince"] = atsActiveSince;
-        json["atsOffSince"] = atsOffSince;
+        json["solar_uptime"] = (t - atsActiveSince) / 1000L;
+        json["grid_uptime"] = (t - atsOffSince) / 1000L;
+        json["vindt"] = vindt;
+        json["energy"] = energy;
         serializeJson(json, *response);
         request->send(response);
     });

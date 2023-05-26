@@ -11,6 +11,20 @@
     <link rel="shortcut icon" type="image/x-icon" href="favicon.ico" />
 
     <style>
+        #spinner-container {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.5);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+        }
+
         .led-indicator {
             width: 20px;
             height: 20px;
@@ -42,33 +56,57 @@
     <div class="container">
         <h1>Dashboard ESP32-ATS</h1>
 
-        <div class="row">
-            <div class="col-md-4">
-                <h3>Carica batterie</h3>
-                <p id="soc">0%, 0V</p>
-            </div>
-            <div class="col-md-4">
-                <h3>Potenza ergogata</h3>
-                <p id="power">0W (0A)</p>
-            </div>
-            <div class="col-md-4">
-                <h3>Andamento tensione</h3>
-                <p id="soc-dt">+0%/h, +0V/h</p>
+        <div id="spinner-container">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Caricamento...</span>
             </div>
         </div>
 
         <div class="row">
             <div class="col-md-4">
-                <h3>Abilitazione inverter</h3>
-                <div id="ats-state"></div>
+                <h3>Tensione</h3>
+                <p id="vin">0V</p>
+                <div id="vin-led"></div>
             </div>
             <div class="col-md-4">
-                <h3>Relè attivo da</h3>
-                <p id="ats-uptime">0h</p>
+                <h3>Carica</h3>
+                <p id="soc">0%</p>
+                <div id="soc-led"></div>
             </div>
             <div class="col-md-4">
-                <h3>Presenza rete</h3>
-                <div id="grid"></div>
+                <h3>Andamento tensione</h3>
+                <p id="vindt">+0 V/h</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <h3>Corrente</h3>
+                <p id="current">0 A</p>
+                <div id="current-led"></div>
+            </div>
+            <div class="col-md-4">
+                <h3>Potenza</h3>
+                <p id="power">0 W</p>
+            </div>
+            <div class="col-md-4">
+                <h3>Energia da quando attivo</h3>
+                <p id="energy">0 kWh</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <h3>Abilitazione relè</h3>
+                <div id="relay-state"></div>
+            </div>
+            <div class="col-md-4">
+                <h3>In autonomia solare da</h3>
+                <p id="solar-uptime">0 h</p>
+            </div>
+            <div class="col-md-4">
+                <h3>Utilizzando la rete da</h3>
+                <p id="grid-uptime">0h</p>
             </div>
         </div>
 
@@ -76,6 +114,7 @@
             <div class="col-md-4">
                 <h3>Temperatura</h3>
                 <p id="ntc">0±0 °C</p>
+                <div id="ntc-ok"></div>
             </div>
             <div class="col-md-4">
                 <h3>Ventola</h3>
@@ -90,7 +129,7 @@
         <div class="row">
             <div class="col-md-4">
                 <h3>IP ESP32</h3>
-                <p id="ip-address">192.168.0.0</p>
+                <p id="ip">192.168.0.0</p>
             </div>
             <div class="col-md-4">
                 <h3>Uptime ESP32</h3>
@@ -141,43 +180,77 @@
     </script>
 
     <script>
-        // Function to update the displayed stats (voltage, current, relay state)
-        function updateStats() {
-            // Replace the following lines with your own logic to retrieve the actual values
-            const voltageValue = 100;
-            const currentValue = 5;
+        document.getElementById("spinner-container").style.display = "flex";
+        let showError = true;
 
-            document.getElementById('voltage').textContent = voltageValue + 'V';
-            document.getElementById('current').textContent = currentValue + 'A';
-
-            const relayStateValue = 'On';
-            const relayIndicator = document.getElementById('relay-indicator');
-
-            if (relayStateValue === 'On') {
-                relayIndicator.className = 'led-indicator led-green'; // Set the appropriate class for the green LED
-            } else {
-                relayIndicator.className = 'led-indicator led-red'; // Set the appropriate class for the red LED
-            }
+        function setLed(elementId, value) {
+            const element = document.getElementById(elementId);
+            if (value)
+                element.className = 'led-indicator led-green';
+            else
+                element.className = 'led-indicator led-red';
         }
 
-        // Function to handle the save button click event
-        function handleSaveButtonClick() {
+        function secondsToHoursMinutes(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+
+            const hoursText = hours > 0 ? hours + "h" : "";
+            const minutesText = minutes > 0 ? minutes + "m" : "";
+
+            return hoursText + " " + minutesText;
+        }
+
+
+        function fetchData() {
+            fetch('/api/data')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('vin').textContent = data.vin + ' V';
+                    setLed('vin-led', data.vin_led);
+                    document.getElementById('soc').textContent = data.soc + '%';
+                    setLed('soc-led', data.soc_led);
+                    document.getElementById('vindt').textContent = data.vindt + ' V/h';
+                    document.getElementById('current').textContent = data.current + ' A';
+                    setLed('current-led', data.current_led);
+                    document.getElementById('power').textContent = data.power + ' W';
+                    document.getElementById('energy').textContent = data.energy + ' kWh';
+                    setLed('relay-state', data.relay_state);
+                    document.getElementById('solar-uptime').textContent = secondsToHoursMinutes(data.solar_uptime);
+                    document.getElementById('grid-uptime').textContent = secondsToHoursMinutes(data.grid_uptime);
+                    document.getElementById('ntc').textContent = data.ntc_avg + '±' + data.ntc_var + ' °C';
+                    setLed('ntc-ok', data.ntc_ok);
+                    setLed('fan', data.fan);
+                    setLed('flame', data.flame);
+                    document.getElementById('ip').textContent = data.ip;
+                    document.getElementById('uptime').textContent = secondsToHoursMinutes(data.uptime);
+
+                    document.getElementById("spinner-container").style.display = "none";
+                    showError = false;
+                })
+                .catch(error => {
+                    console.error('Error: ', error);
+                    document.getElementById("spinner-container").style.display = "none";
+                    if (showError)
+                        alert("Errore, riprova più tardi.");
+                });
+        }
+
+        fetchData();
+        setInterval(fetchData, 5000);
+
+
+        function saveConfig() {
             const jsonContent = document.getElementById('json-editor').value;
-            // Replace the following line with your own logic to save the JSON content
             console.log('Saving JSON content:', jsonContent);
         }
 
-        // Function to handle the reset button click event
-        function handleResetButtonClick() {
+        function clearErrors() {
             document.getElementById('json-editor').value = '';
         }
 
-        // Update the stats on page load
-        updateStats();
-
-        // Attach event listeners
-        document.getElementById('save-button').addEventListener('click', handleSaveButtonClick);
-        document.getElementById('reset-button').addEventListener('click', handleResetButtonClick);
+        document.getElementById('save-button').addEventListener('click', saveConfig);
+        document.getElementById('clear-errors').addEventListener('click', clearErrors);
     </script>
 
 </body>
