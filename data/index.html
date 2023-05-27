@@ -41,10 +41,6 @@
             background-color: red;
         }
 
-        p {
-            margin-left: 1em;
-        }
-
         h1 {
             margin-top: 0.2em;
             margin-bottom: 0.5em;
@@ -60,78 +56,78 @@
             <div class="spinner-border text-primary" role="status"></div>
         </div>
 
-        <div class="row">
+        <div class="row" style="margin-bottom: 1em;">
             <div class="col-md-4">
                 <h3>Tensione</h3>
-                <p id="vin">0V</p>
-                <div id="vin-led"></div>
+                <span id="vin">0V</span>
+                <div id="vin-led" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>Carica</h3>
-                <p id="soc">0%</p>
-                <div id="soc-led"></div>
+                <span id="soc">0%</span>
+                <div id="soc-led" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>Andamento tensione</h3>
-                <p id="vindt">+0 V/h</p>
+                <p id="vindt" style="margin-left: 1em;">+0 V/h</p>
             </div>
         </div>
 
-        <div class="row">
+        <div class="row" style="margin-bottom: 1em;">
             <div class="col-md-4">
                 <h3>Corrente</h3>
-                <p id="current">0 A</p>
-                <div id="current-led"></div>
+                <span id="current">0 A</span>
+                <div id="current-led" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>Potenza</h3>
-                <p id="power">0 W</p>
+                <p id="power" style="margin-left: 1em;">0 W</p>
             </div>
             <div class="col-md-4">
                 <h3>Energia da quando attivo</h3>
-                <p id="energy">0 kWh</p>
+                <p id="energy" style="margin-left: 1em;">0 kWh</p>
             </div>
         </div>
 
-        <div class="row">
+        <div class="row" style="margin-bottom: 1em;">
             <div class="col-md-4">
                 <h3>Abilitazione relè</h3>
-                <div id="relay-state"></div>
+                <div id="relay-state" style="margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>In autonomia solare da</h3>
-                <p id="solar-uptime">0 h</p>
+                <p id="solar-uptime" style="margin-left: 1em;">0 h</p>
             </div>
             <div class="col-md-4">
                 <h3>Utilizzando la rete da</h3>
-                <p id="grid-uptime">0h</p>
+                <p id="grid-uptime" style="margin-left: 1em;">0h</p>
             </div>
         </div>
 
-        <div class="row">
+        <div class="row" style="margin-bottom: 1em;">
             <div class="col-md-4">
                 <h3>Temperatura</h3>
-                <p id="ntc">0±0 °C</p>
-                <div id="ntc-ok"></div>
+                <span id="ntc">0±0 °C</span>
+                <div id="ntc-ok" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>Ventola</h3>
-                <div id="fan"></div>
+                <div id="fan" style="margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>Sensori fuoco</h3>
-                <div id="flame"></div>
+                <div id="flame" style="margin-top: 2px; margin-left: 1em;"></div>
             </div>
         </div>
 
-        <div class="row">
+        <div class="row" style="margin-bottom: 1em;">
             <div class="col-md-4">
                 <h3>IP ESP32</h3>
-                <p id="ip">192.168.0.0</p>
+                <p id="ip" style="margin-left: 1em;">192.168.0.0</p>
             </div>
             <div class="col-md-4">
                 <h3>Uptime ESP32</h3>
-                <p id="uptime">0h 0m</p>
+                <p id="uptime" style="margin-left: 1em;">0h 0m</p>
             </div>
             <div class="col-md-4">
                 <button id="clear-errors" class="btn btn-danger">Azzera errori</button>
@@ -190,33 +186,31 @@
         }
 
         function secondsToHoursMinutes(seconds) {
+            if (seconds < 0)
+                return '-';
             const hours = Math.floor(seconds / 3600);
             const minutes = Math.floor((seconds % 3600) / 60);
-
-            const hoursText = hours > 0 ? hours + "h" : "";
-            const minutesText = minutes > 0 ? minutes + "m" : "";
-
-            return hoursText + " " + minutesText;
+            return hours + "h " + minutes + "m";
         }
 
-
         function fetchData() {
-            fetch('/api/data')
+            //fetch('/api/data')
+            fetch('http://esp32-ats.local/api/data')
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('vin').textContent = data.vin + ' V';
+                    document.getElementById('vin').textContent = data.vin.toFixed(2) + ' V';
                     setLed('vin-led', data.vin_led);
-                    document.getElementById('soc').textContent = data.soc + '%';
+                    document.getElementById('soc').textContent = data.soc.toFixed(2) + '%';
                     setLed('soc-led', data.soc_led);
-                    document.getElementById('vindt').textContent = data.vindt + ' V/h';
-                    document.getElementById('current').textContent = data.current + ' A';
+                    document.getElementById('vindt').textContent = data.vindt.toFixed(2) + ' V/h';
+                    document.getElementById('current').textContent = data.current.toFixed(2) + ' A';
                     setLed('current-led', data.current_led);
-                    document.getElementById('power').textContent = data.power + ' W';
-                    document.getElementById('energy').textContent = data.energy + ' kWh';
+                    document.getElementById('power').textContent = data.power.toFixed(2) + ' W';
+                    document.getElementById('energy').textContent = data.energy.toFixed(2) + ' kWh';
                     setLed('relay-state', data.relay_state);
                     document.getElementById('solar-uptime').textContent = secondsToHoursMinutes(data.solar_uptime);
                     document.getElementById('grid-uptime').textContent = secondsToHoursMinutes(data.grid_uptime);
-                    document.getElementById('ntc').textContent = data.ntc_avg + '±' + data.ntc_var + ' °C';
+                    document.getElementById('ntc').textContent = data.ntc_avg.toFixed(1) + '±' + data.ntc_var.toFixed(1) + ' °C';
                     setLed('ntc-ok', data.ntc_ok);
                     setLed('fan', data.fan);
                     setLed('flame', data.flame);

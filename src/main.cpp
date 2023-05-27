@@ -231,6 +231,8 @@ void wifiLoop(void* parameter) {
         .setDefaultFile("index.html")
         .setAuthentication(USER, USER_PASSWORD);
     ATSServer::server.onNotFound(ATSServer::notFound);
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "content-type");
 
     ATSServer::server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest *request) {
         AsyncResponseStream *response = request->beginResponseStream("application/json");
@@ -251,9 +253,14 @@ void wifiLoop(void* parameter) {
         json["current_led"] = enableATSCurrent;
         json["flame"] = enableATSFire;
         json["ip"] = WiFi.localIP().toString();
-        json["uptime"] = millis();
-        json["solar_uptime"] = (t - atsActiveSince) / 1000L;
-        json["grid_uptime"] = (t - atsOffSince) / 1000L;
+        json["uptime"] = millis() / 1000L;
+        if (enableATS) {
+            json["solar_uptime"] = (t - atsActiveSince) / 1000L;
+            json["grid_uptime"] = -1;
+        } else {
+            json["solar_uptime"] = -1;
+            json["grid_uptime"] = (t - atsOffSince) / 1000L;
+        }
         json["vindt"] = vindt;
         json["energy"] = energy;
         serializeJson(json, *response);
