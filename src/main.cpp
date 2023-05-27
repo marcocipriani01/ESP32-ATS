@@ -11,6 +11,7 @@ volatile boolean fanOnNtc = false,
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
 MedianFilter clampFilter(CLAMP_WINDOW);
+volatile double current = 0.0;
 volatile double soc = 0.0;
 unsigned long clampErrorSince = 0L;
 volatile double energy = 0.0;
@@ -159,7 +160,12 @@ void loop() {
             enableATSSoc = false;
         }
 
-        double current = readCurrent();
+        double clampRMS = readClampVRMS();
+        if (printData)
+            Serial.println("DATA:\tClamp Vrms = " + String(clampRMS * 1000.0) + " mV");
+        current = dmapLowConstrain(clampFilter.add(clampRMS),
+            settings.clampNoise, CLAMP_CALIBRATION_X - CLAMP_NOISE_DEFAULT + settings.clampNoise,
+            0.0, CLAMP_CALIBRATION_Y - CLAMP_NOISE_DEFAULT + settings.clampNoise);
         if (printData)
             Serial.println("DATA:\tCurrent = " + String(current) + "A");
         if (enableATSCurrent) {
@@ -198,7 +204,7 @@ void loop() {
             atsActiveSince = 0L;
         }
         if (newATSVal)
-            energy += V_AC * current * (t - lastSample) / 0.0036;
+            energy += V_AC * current * (((double) (t - lastSample)) / 1000.0) / (3.6e+6);
         else
             energy = 0.0;
         enableATS = newATSVal;
@@ -212,17 +218,17 @@ void loop() {
 
 void wifiLoop(void* parameter) {
     delay(500);
-    Serial.println("LOG:\tStarting Wi-Fi connection...");
+    Serial.println("INFO:\tStarting Wi-Fi connection...");
     while (!ATSServer::connect()) {
-        Serial.println("LOG:\tWiFi connection failed, retrying...");
+        Serial.println("INFO:\tWiFi connection failed, retrying...");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
-    Serial.print("LOG:\tIP Address: ");
+    Serial.print("INFO:\tIP Address: ");
     Serial.println(WiFi.localIP());
     if (!MDNS.begin(HOSTNAME)) {
-        Serial.println("LOG:\tError setting up the MDNS responder!");
+        Serial.println("INFO:\tError setting up the MDNS responder!");
     } else {
-        Serial.println("LOG:\tmDNS responder started");
+        Serial.println("INFO:\tmDNS responder started");
         MDNS.addService("http", "tcp", 80);
     }
 
@@ -244,7 +250,6 @@ void wifiLoop(void* parameter) {
         json["vin"] = vinFilter.isReady() ? vinFilter.get() : 0.0;
         json["vin_led"] = enableATSVin;
         json["soc"] = soc;
-        double current = clampFilter.isReady() ? clampFilter.get() : 0.0;
         json["current"] = current;
         json["power"] = current * V_AC;
         json["relay_state"] = enableATS;
@@ -269,14 +274,14 @@ void wifiLoop(void* parameter) {
 
     ATSServer::server.begin();
 
-    Serial.println("LOG:\tServer is up.");
+    Serial.println("INFO:\tServer is up.");
 
     while (1) {
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("LOG:\tWiFi connection failed, retrying...");
+            Serial.println("INFO:\tWiFi connection failed, retrying...");
             vTaskDelay(500 / portTICK_PERIOD_MS);
             ATSServer::connect();
-            Serial.print("LOG:\tIP Address: ");
+            Serial.print("INFO:\tIP Address: ");
             Serial.println(WiFi.localIP());
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -292,14 +297,26 @@ void serialEvent() {
                 break;
             }
 
+            case 'R' {
+                Serial.println("INFO:\tReboot...");
+                ESP.restart();
+                break;
+            }
+
+            case 'Q': {
+                Serial.println("INFO:\tResetting errors...");
+                resetErrors();
+                break;
+            }
+
             case 'C': {
-                Serial.println("LOG:\tCalibrating clamp...");
+                Serial.println("INFO:\tCalibrating clamp...");
                 double clampNoise = 0.0;
                 const uint8_t samples = 10;
                 for (uint8_t i = 0; i < samples; i++) {
                     clampNoise += readClampVRMS();
                 }
-                clampNoise /= samples;
+                clampNoise /= ((double) samples);
                 Serial.print("DATA:\tClamp noise: ");
                 Serial.print(clampNoise * 1000.0, 5);
                 Serial.println("mV");
@@ -310,11 +327,18 @@ void serialEvent() {
 
             case 'P': {
                 int code = sendPushover("ESP32-ATS", "Messaggio di test!");
-                Serial.println("LOG:\tPushover test message sent, response code: " + String(code));
+                Serial.println("INFO:\tPushover test message sent, response code: " + String(code));
                 break;
             }
         }
     }
+}
+
+double resetErrors() {
+    enableATSNtcDanger = true;
+    enableATSCurrent = true;
+    clampErrorSince = 0L;
+    enableATSFire = true;
 }
 
 double readNTC(uint8_t id) {
@@ -341,14 +365,10 @@ double readClampVRMS() {
     unsigned long start_time = millis();
     while ((millis() - start_time) < CLAMP_MEASURE_TIME) {
         double readValue = ADC_LUT[analogRead(CLAMP)];
-        if (readValue > maxValue)
+        if (readValue > (maxValue * 1.025))
             maxValue = readValue;
-        else if (readValue < minValue)
+        else if (readValue < (minValue * 0.975))
             minValue = readValue;
     }
     return (maxValue - minValue) * VREF / ADC_MAX;
-}
-
-double readCurrent() {
-    return dmap(clampFilter.add(readClampVRMS()), settings.clampNoise, CLAMP_CALIBRATION_X, 0.0, CLAMP_CALIBRATION_Y);
 }

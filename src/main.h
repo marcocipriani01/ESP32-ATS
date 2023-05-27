@@ -19,11 +19,11 @@
 
 void wifiLoop(void* parameter);
 
+double resetErrors();
 double readNTC(uint8_t id);
 double readVoltage();
 void resetCurrentError();
 double readClampVRMS();
-double readCurrent();
 double dmap(double x, double in_min, double in_max, double out_min, double out_max);
 
 #endif
