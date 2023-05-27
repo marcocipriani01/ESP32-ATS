@@ -194,8 +194,8 @@
         }
 
         function fetchData() {
-            //fetch('/api/data')
-            fetch('http://esp32-ats.local/api/data')
+            //fetch('http://esp32-ats.local/api/data')
+            fetch('/api/data')
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('vin').textContent = data.vin.toFixed(2) + ' V';

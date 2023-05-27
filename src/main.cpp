@@ -160,7 +160,7 @@ void loop() {
             enableATSSoc = false;
         }
 
-        double clampRMS = readClampVRMS();
+        /*double clampRMS = readClampVRMS();
         if (printData)
             Serial.println("DATA:\tClamp Vrms = " + String(clampRMS * 1000.0) + " mV");
         //current = dmapLowConstrain(clampFilter.add(clampRMS),
@@ -182,7 +182,8 @@ void loop() {
             } else {
                 clampErrorSince = 0L;
             }
-        }
+        }*/
+        current = 0.0;
 
         boolean fireDetected = !digitalRead(FIRE_SENS0);
         if (printData)
@@ -248,7 +249,10 @@ void wifiLoop(void* parameter) {
         json["ntc_avg"] = ntcAverage;
         json["ntc_var"] = ntcVariation;
         json["fan"] = (boolean) (fanOnNtc || fanOnFire);
-        json["vin"] = vinFilter.isReady() ? vinFilter.get() : 0.0;
+        if (vinFilter.isReady())
+            json["vin"] = constrain(vinFilter.get(), 0.0, VIN_MAX);
+        else
+            json["vin"] = 0.0;
         json["vin_led"] = enableATSVin;
         json["soc"] = soc;
         json["current"] = current;
