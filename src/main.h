@@ -19,7 +19,7 @@
 
 void wifiLoop(void* parameter);
 
-double resetErrors();
+void resetErrors();
 double readNTC(uint8_t id);
 double readVoltage();
 void resetCurrentError();

@@ -163,9 +163,10 @@ void loop() {
         double clampRMS = readClampVRMS();
         if (printData)
             Serial.println("DATA:\tClamp Vrms = " + String(clampRMS * 1000.0) + " mV");
-        current = dmapLowConstrain(clampFilter.add(clampRMS),
-            settings.clampNoise, CLAMP_CALIBRATION_X - CLAMP_NOISE_DEFAULT + settings.clampNoise,
-            0.0, CLAMP_CALIBRATION_Y - CLAMP_NOISE_DEFAULT + settings.clampNoise);
+        //current = dmapLowConstrain(clampFilter.add(clampRMS),
+        //    settings.clampNoise, CLAMP_CALIBRATION_X - CLAMP_NOISE_DEFAULT + settings.clampNoise,
+        //    0.0, CLAMP_CALIBRATION_Y - CLAMP_NOISE_DEFAULT + settings.clampNoise);
+        current = dmapLowConstrain(clampFilter.add(clampRMS), CLAMP_NOISE_DEFAULT, CLAMP_CALIBRATION_X, 0.0, CLAMP_CALIBRATION_Y);
         if (printData)
             Serial.println("DATA:\tCurrent = " + String(current) + "A");
         if (enableATSCurrent) {
@@ -297,14 +298,13 @@ void serialEvent() {
                 break;
             }
 
-            case 'R' {
+            case 'R': {
                 Serial.println("INFO:\tReboot...");
                 ESP.restart();
                 break;
             }
 
             case 'Q': {
-                Serial.println("INFO:\tResetting errors...");
                 resetErrors();
                 break;
             }
@@ -334,7 +334,8 @@ void serialEvent() {
     }
 }
 
-double resetErrors() {
+void resetErrors() {
+    Serial.println("INFO:\tResetting errors...");
     enableATSNtcDanger = true;
     enableATSCurrent = true;
     clampErrorSince = 0L;
