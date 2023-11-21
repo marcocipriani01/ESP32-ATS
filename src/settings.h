@@ -2,28 +2,27 @@
 #define SETTINGS_H
 
 #include <Arduino.h>
-#include <EEPROM.h>
+#include <Preferences.h>
+#include <nvs_flash.h>
 
 #include "config.h"
 
 typedef struct {
-    uint8_t marker;
-    double clampNoise;
     double vBattCuttOff;
     double vBattRecovery;
     double socCuttOff;
     double socRecovery;
-    double currentCuttOff;
-    unsigned long currentCuttOffTimeOut;
     double tempFanOn;
     double tempCutOffHigh;
     double tempCutOffLow;
     double tempDanger;
+    boolean enableFireSensor;
 } Settings;
 
+extern Preferences preferences;
 extern Settings settings;
 
-void resetSettings();
+void prefsInit();
 void loadSettings();
 void saveSettings();
 

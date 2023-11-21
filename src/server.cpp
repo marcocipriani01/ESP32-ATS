@@ -1,11 +1,10 @@
-#include "ats_server.h"
+#include "server.h"
 
-namespace ATSServer {
-AsyncWebServer server(80);
+AsyncWebServer server(SERVER_PORT);
 
-boolean connect() {
+boolean wifiConnect() {
     WiFi.mode(WIFI_STA);
-    WiFi.begin(SSID, WIFI_PASSWORD);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     unsigned long start = millis();
     while ((WiFi.status() != WL_CONNECTED) && ((millis() - start) <= WIFI_TIMEOUT)) {
@@ -15,7 +14,6 @@ boolean connect() {
     return (WiFi.status() == WL_CONNECTED);
 }
 
-void notFound(AsyncWebServerRequest *request) {
+void notFoundPage(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
 }
-}  // namespace ATSServer

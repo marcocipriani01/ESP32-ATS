@@ -9,18 +9,14 @@ volatile double ntcVariation = 0.0;
 volatile boolean fanOnNtc = false, fanOnFire = false;
 
 MedianFilter vinFilter(VIN_DIVIDER_WINDOW);
-MedianFilter clampFilter(CLAMP_WINDOW);
 volatile double vin = 0.0;
-volatile double current = 0.0;
 volatile double soc = 0.0;
-unsigned long clampErrorSince = 0L;
-volatile double energy = 0.0;
 double lastVin = 0.0;
 volatile double vindt = 0.0;
 unsigned long lastVindtMeasure = 0L;
 
-volatile boolean enableATS = false, enableATSNtcHigh = false, enableATSNtcLow = false, enableATSNtcDanger = true, enableATSVin = false,
-                 enableATSCurrent = true, enableATSSoc = false, enableATSFire = true;
+volatile boolean enableATS = false, enableATSNtcHigh = false, enableATSNtcLow = false,
+    enableATSNtcDanger = true, enableATSVin = false, enableATSSoc = false, enableATSFire = true;
 
 volatile unsigned long atsActiveSince = 0L, atsOffSince = 0L;
 
@@ -32,14 +28,15 @@ boolean printData = false;
 
 void setup() {
     Serial.begin(BAUD_RATE);
+    Serial.println("INFO:\tSettings init...");
 
     loadSettings();
 
+    Serial.println("INFO:\tGPIO init...");
     for (uint8_t i = 0; i < NTC_COUNT; i++) {
         pinMode(ntcPins[i], INPUT);
     }
 
-    pinMode(CLAMP, INPUT);
     pinMode(VIN_DIVIDER, INPUT);
 
     pinMode(RELAY_ATS_GRID, OUTPUT);
@@ -61,6 +58,7 @@ void setup() {
 
     analogReadResolution(ADC_RESOLUTION);
 
+    Serial.println("INFO:\tSPIFFS init...");
     if (!SPIFFS.begin(true)) {
         while (1) {
             Serial.println("ERR:\tAn Error has occurred while mounting SPIFFS.");
@@ -144,59 +142,37 @@ void loop() {
                 lastVindtMeasure = t;
                 lastVin = vin;
             } else if ((t - lastVindtMeasure) >= VIN_dt_INTERVAL) {
-                vindt = 1000.0 * (vin - lastVin) / ((double)(t - lastVindtMeasure));
+                vindt = (3.6e+6) * (vin - lastVin) / ((double)(t - lastVindtMeasure));
                 lastVin = vin;
                 lastVindtMeasure = t;
             }
         }
 
-        /*double clampRMS = readClampVRMS();
-        if (printData)
-            Serial.println("DATA:\tClamp Vrms = " + String(clampRMS * 1000.0) + " mV");
-        //current = dmapLowConstrain(clampFilter.add(clampRMS),
-        //    settings.clampNoise, CLAMP_CALIBRATION_X - CLAMP_NOISE_DEFAULT + settings.clampNoise,
-        //    0.0, CLAMP_CALIBRATION_Y - CLAMP_NOISE_DEFAULT + settings.clampNoise);
-        current = dmapLowConstrain(clampFilter.add(clampRMS), CLAMP_NOISE_DEFAULT, CLAMP_CALIBRATION_X, 0.0, CLAMP_CALIBRATION_Y);
-        if (printData)
-            Serial.println("DATA:\tCurrent = " + String(current) + "A");
-        if (enableATSCurrent) {
-            if (current >= settings.currentCuttOff) {
-                if (clampErrorSince == 0L) {
-                    clampErrorSince = t;
-                } else if ((t - clampErrorSince) >= (2 * CLAMP_MEASURE_TIME)) {
-                    sendPushover("Monitoraggio potenza ATS",
-                        "Corrente troppo alta, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
-                    enableATSCurrent = false;
-                    clampErrorSince = 0L;
-                }
-            } else {
-                clampErrorSince = 0L;
+        if (settings.enableFireSensor) {
+            boolean fireDetected = !digitalRead(FIRE_SENS0);
+            if (printData) Serial.println("DATA:\tFire detected = " + String(fireDetected));
+            if (enableATSFire && fireDetected) {
+                sendPushover("Monitoraggio temperatura ATS", "Rilevato incendio, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
+                Serial.println("ERR:\tFire detected!");
+                enableATSFire = false;
+                fanOnFire = true;
             }
-        }*/
-        current = 0.0;
-
-        boolean fireDetected = !digitalRead(FIRE_SENS0);
-        if (printData) Serial.println("DATA:\tFire detected = " + String(fireDetected));
-        if (enableATSFire && fireDetected) {
-            sendPushover("Monitoraggio temperatura ATS", "Rilevato incendio, sistema disabilitato. Riabilitare manualmente nell'interfaccia web.");
-            Serial.println("ERR:\tFire detected!");
-            enableATSFire = false;
-            fanOnFire = true;
+        } else {
+            enableATSFire = true;
+            fanOnFire = false;
         }
 
         boolean newATSVal =
-            enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger && enableATSVin && enableATSSoc && enableATSCurrent && enableATSFire;
+            enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger && enableATSVin && enableATSSoc && enableATSFire;
         if (newATSVal && (!enableATS)) {
+            sendPushover("ESP32-ATS", "Relè attivato, osservatorio alimentato a batterie.");
             atsActiveSince = t;
             atsOffSince = 0L;
         } else if ((!newATSVal) && enableATS) {
+            sendPushover("ESP32-ATS", "Relè disattivato, osservatorio alimentato da rete.");
             atsOffSince = t;
             atsActiveSince = 0L;
         }
-        if (newATSVal)
-            energy += V_AC * current * (((double)(t - lastSample)) / 1000.0) / (3.6e+6);
-        else
-            energy = 0.0;
         enableATS = newATSVal;
         digitalWrite(RELAY_ATS_SOLAR, !enableATS);
         digitalWrite(RELAY_FAN, !(fanOnNtc || fanOnFire));
@@ -209,7 +185,7 @@ void loop() {
 void wifiLoop(void* parameter) {
     delay(500);
     Serial.println("INFO:\tStarting Wi-Fi connection...");
-    while (!ATSServer::connect()) {
+    while (!wifiConnect()) {
         Serial.println("INFO:\tWiFi connection failed, retrying...");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
@@ -222,12 +198,12 @@ void wifiLoop(void* parameter) {
         MDNS.addService("http", "tcp", 80);
     }
 
-    ATSServer::server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html").setAuthentication(USER, USER_PASSWORD);
-    ATSServer::server.onNotFound(ATSServer::notFound);
+    server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html").setAuthentication(USER, USER_PASSWORD);
+    server.onNotFound(notFoundPage);
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "content-type");
 
-    ATSServer::server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest* request) {
         AsyncResponseStream* response = request->beginResponseStream("application/json");
         DynamicJsonDocument json(1024);
         unsigned long t = millis();
@@ -237,12 +213,9 @@ void wifiLoop(void* parameter) {
         json["vin"] = vin;
         json["vin_led"] = enableATSVin;
         json["soc"] = soc;
-        json["current"] = current;
-        json["power"] = current * V_AC;
         json["relay_state"] = enableATS;
         json["ntc_ok"] = (boolean)(enableATSNtcHigh && enableATSNtcLow && enableATSNtcDanger);
         json["soc_led"] = enableATSSoc;
-        json["current_led"] = enableATSCurrent;
         json["flame"] = enableATSFire;
         json["ip"] = WiFi.localIP().toString();
         json["uptime"] = millis() / 1000L;
@@ -254,12 +227,38 @@ void wifiLoop(void* parameter) {
             json["grid_uptime"] = (t - atsOffSince) / 1000L;
         }
         json["vindt"] = vindt;
-        json["energy"] = energy;
         serializeJson(json, *response);
         request->send(response);
     });
 
-    ATSServer::server.begin();
+    server.on("/api/config", HTTP_GET, [](AsyncWebServerRequest* request) {
+        AsyncResponseStream* response = request->beginResponseStream("application/json");
+        DynamicJsonDocument json(1024);
+        json["vBattCuttOff"] = settings.vBattCuttOff;
+        json["vBattRecovery"] = settings.vBattRecovery;
+        json["socCuttOff"] = settings.socCuttOff;
+        json["socRecovery"] = settings.socRecovery;
+        json["tempFanOn"] = settings.tempFanOn;
+        json["tempCutOffHigh"] = settings.tempCutOffHigh;
+        json["tempCutOffLow"] = settings.tempCutOffLow;
+        json["tempDanger"] = settings.tempDanger;
+        json["enableFireSensor"] = (int) settings.enableFireSensor;
+        serializeJsonPretty(json, *response);
+        request->send(response);
+    });
+    server.on("/api/config-upd", HTTP_GET, handleConfigUpdate);
+
+    server.on("/api/clear-errors", HTTP_GET, [](AsyncWebServerRequest* request) {
+        resetErrors();
+        Serial.println("INFO:\tErrors cleared.");
+        request->send(200, "text/plain", "OK");
+    });
+
+#if SERVER_PORT == 443
+    server.beginSecure(sslCert, sslPrivKey, "");
+#else
+    server.begin();
+#endif
 
     Serial.println("INFO:\tServer is up.");
 
@@ -267,7 +266,7 @@ void wifiLoop(void* parameter) {
         if (WiFi.status() != WL_CONNECTED) {
             Serial.println("INFO:\tWiFi connection failed, retrying...");
             vTaskDelay(500 / portTICK_PERIOD_MS);
-            ATSServer::connect();
+            wifiConnect();
             Serial.print("INFO:\tIP Address: ");
             Serial.println(WiFi.localIP());
         }
@@ -284,8 +283,19 @@ void serialEvent() {
                 break;
             }
 
+            case 'E': {
+                nvs_flash_erase();
+                nvs_flash_init();
+                saveSettings();
+            }
+
+            case 'S': {
+                saveSettings();
+            }
+
             case 'R': {
                 Serial.println("INFO:\tReboot...");
+                delay(100);
                 ESP.restart();
                 break;
             }
@@ -295,26 +305,32 @@ void serialEvent() {
                 break;
             }
 
-            case 'C': {
-                Serial.println("INFO:\tCalibrating clamp...");
-                double clampNoise = 0.0;
-                const uint8_t samples = 10;
-                for (uint8_t i = 0; i < samples; i++) {
-                    clampNoise += readClampVRMS();
-                }
-                clampNoise /= ((double)samples);
-                Serial.print("DATA:\tClamp noise: ");
-                Serial.print(clampNoise * 1000.0, 5);
-                Serial.println("mV");
-                settings.clampNoise = clampNoise;
-                saveSettings();
-                break;
-            }
-
             case 'P': {
                 int code = sendPushover("ESP32-ATS", "Messaggio di test!");
                 Serial.println("INFO:\tPushover test message sent, response code: " + String(code));
                 break;
+            }
+
+            case 'L': {
+                Serial.println("Configuration:");
+                Serial.print("\t- vBattCuttOff = ");
+                Serial.println(settings.vBattCuttOff, 3);
+                Serial.print("\t- socCuttOff = ");
+                Serial.println(settings.socCuttOff, 3);
+                Serial.print("\t- socCuttOff = ");
+                Serial.println(settings.socCuttOff, 3);
+                Serial.print("\t- socRecovery = ");
+                Serial.println(settings.socRecovery, 3);
+                Serial.print("\t- tempFanOn = ");
+                Serial.println(settings.tempFanOn, 3);
+                Serial.print("\t- tempCutOffHigh = ");
+                Serial.println(settings.tempCutOffHigh, 3);
+                Serial.print("\t- tempCutOffLow = ");
+                Serial.println(settings.tempCutOffLow, 3);
+                Serial.print("\t- tempDanger = ");
+                Serial.println(settings.tempDanger, 3);
+                Serial.print("\t- enableFireSensor = ");
+                Serial.println(settings.enableFireSensor);
             }
         }
     }
@@ -323,9 +339,8 @@ void serialEvent() {
 void resetErrors() {
     Serial.println("INFO:\tResetting errors...");
     enableATSNtcDanger = true;
-    enableATSCurrent = true;
-    clampErrorSince = 0L;
     enableATSFire = true;
+    fanOnFire = false;
 }
 
 double readNTC(uint8_t id) {
@@ -335,21 +350,54 @@ double readNTC(uint8_t id) {
     return constrain(temp, -50.0, 300.0);
 }
 
-void resetCurrentError() {
-    clampErrorSince = 0L;
-    enableATSCurrent = true;
-}
-
-double readClampVRMS() {
-    double maxValue = 0.0;
-    double minValue = ADC_MAX;
-    unsigned long start_time = millis();
-    while ((millis() - start_time) < CLAMP_MEASURE_TIME) {
-        double readValue = ADC_LUT[analogRead(CLAMP)];
-        if (readValue > (maxValue * 1.025))
-            maxValue = readValue;
-        else if (readValue < (minValue * 0.975))
-            minValue = readValue;
+void handleConfigUpdate(AsyncWebServerRequest* request) {
+    Serial.println("INFO:\tNew configuration:");
+    if (request->hasParam("vBattCuttOff")) {
+        settings.vBattCuttOff = request->getParam("vBattCuttOff")->value().toDouble();
+        Serial.print("\t- vBattCuttOff = ");
+        Serial.println(settings.vBattCuttOff, 3);
     }
-    return (maxValue - minValue) * VREF / ADC_MAX;
+    if (request->hasParam("vBattRecovery")) {
+        settings.vBattRecovery = request->getParam("vBattRecovery")->value().toDouble();
+        Serial.print("\t- socCuttOff = ");
+        Serial.println(settings.socCuttOff, 3);
+    }
+    if (request->hasParam("socCuttOff")) {
+        settings.socCuttOff = request->getParam("socCuttOff")->value().toDouble();
+        Serial.print("\t- socCuttOff = ");
+        Serial.println(settings.socCuttOff, 3);
+    }
+    if (request->hasParam("socRecovery")) {
+        settings.socRecovery = request->getParam("socRecovery")->value().toDouble();
+        Serial.print("\t- socRecovery = ");
+        Serial.println(settings.socRecovery, 3);
+    }
+    if (request->hasParam("tempFanOn")) {
+        settings.tempFanOn = request->getParam("tempFanOn")->value().toDouble();
+        Serial.print("\t- tempFanOn = ");
+        Serial.println(settings.tempFanOn, 3);
+    }
+    if (request->hasParam("tempCutOffHigh")) {
+        settings.tempCutOffHigh = request->getParam("tempCutOffHigh")->value().toDouble();
+        Serial.print("\t- tempCutOffHigh = ");
+        Serial.println(settings.tempCutOffHigh, 3);
+    }
+    if (request->hasParam("tempCutOffLow")) {
+        settings.tempCutOffLow = request->getParam("tempCutOffLow")->value().toDouble();
+        Serial.print("\t- tempCutOffLow = ");
+        Serial.println(settings.tempCutOffLow, 3);
+    }
+    if (request->hasParam("tempDanger")) {
+        settings.tempDanger = request->getParam("tempDanger")->value().toDouble();
+        Serial.print("\t- tempDanger = ");
+        Serial.println(settings.tempDanger, 3);
+    }
+    if (request->hasParam("enableFireSensor")) {
+        settings.enableFireSensor = (request->getParam("enableFireSensor")->value().toInt() > 0);
+        Serial.print("\t- enableFireSensor = ");
+        Serial.println(settings.enableFireSensor);
+    }
+
+    saveSettings();
+    request->send(200, "application/text", "OK.");
 }

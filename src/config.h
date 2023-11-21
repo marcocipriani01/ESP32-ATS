@@ -1,9 +1,13 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <Arduino.h>
+
+#define SERVER_PORT 80
+
 #define BAUD_RATE 115200
 
-#define SSID "GL-AR150-321"
+#define WIFI_SSID "GL-AR150-321"
 #define WIFI_PASSWORD "goodlife"
 #define WIFI_TIMEOUT 15000
 #define HOSTNAME "ESP32-ATS"
@@ -14,8 +18,7 @@
 #define PUSHOVER_USER "u766fgj7jkc9eb2v15aqt7hpt54evz"
 #define PUSHOVER_TOKEN "af1xmemq64era2ajbb68t9a8hxd5am"
 
-#define EEPROM_START 0
-#define EEPROM_MARKER 0xF0
+#define NVS_MARKER 0xAB
 
 #define SAMPLING_INTERVAL 1000L
 
@@ -28,14 +31,6 @@
 #define NTC_T0 298.15
 #define NTC_R1 47000.0
 #define NTC_WINDOW 5
-
-#define V_AC 220.0
-
-#define CLAMP_NOISE_DEFAULT 0.052945
-#define CLAMP_CALIBRATION_X (1.0853685 / 4)
-#define CLAMP_CALIBRATION_Y 0.44
-#define CLAMP_MEASURE_TIME 5000L
-#define CLAMP_WINDOW 10
 
 #define VIN_dt_INTERVAL (60 * 1000L)
 #define VIN_DIVIDER_R1 100000.0

@@ -75,24 +75,9 @@
 
         <div class="row" style="margin-bottom: 1em;">
             <div class="col-md-4">
-                <h3>Corrente</h3>
-                <span id="current">0 A</span>
-                <div id="current-led" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
-            </div>
-            <div class="col-md-4">
-                <h3>Potenza</h3>
-                <p id="power" style="margin-left: 1em;">0 W</p>
-            </div>
-            <div class="col-md-4">
-                <h3>Energia da quando attivo</h3>
-                <p id="energy" style="margin-left: 1em;">0 kWh</p>
-            </div>
-        </div>
-
-        <div class="row" style="margin-bottom: 1em;">
-            <div class="col-md-4">
-                <h3>Abilitazione relè</h3>
-                <div id="relay-state" style="margin-top: 2px; margin-left: 1em;"></div>
+                <h3>Abilitazione inverter</h3>
+                <span id="relay-text">Spento</span>
+                <div id="relay-state" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>In autonomia solare da</h3>
@@ -112,11 +97,13 @@
             </div>
             <div class="col-md-4">
                 <h3>Ventola</h3>
-                <div id="fan" style="margin-top: 2px; margin-left: 1em;"></div>
+                <span id="fan-text">Spenta</span>
+                <div id="fan" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
             </div>
             <div class="col-md-4">
                 <h3>Sensori fuoco</h3>
-                <div id="flame" style="margin-top: 2px; margin-left: 1em;"></div>
+                <span id="flame-text">OK</span>
+                <div id="flame" style="float: left; margin-top: 2px; margin-left: 1em;"></div>
             </div>
         </div>
 
@@ -143,21 +130,9 @@
             </div>
         </div>
 
-        <div class="row" style="margin-top: 0.5em">
+        <div class="row" style="margin-top: 0.5em; padding-bottom: 2em;">
             <div class="col-md-12">
                 <button id="save-button" class="btn btn-primary">Salva</button>
-            </div>
-        </div>
-
-        <hr>
-
-        <div class="row" style="margin-top: 0.5em">
-            <div class="col-md-3">
-                <button id="save-button" class="btn btn-warning">Aggiornamento firmware</button>
-            </div>
-
-            <div class="col-md-8">
-                <p id="uptime">Firmware v1.0, 00/00/0000</p>
             </div>
         </div>
     </div>
@@ -167,15 +142,12 @@
         crossorigin="anonymous"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.22.0/src-min-noconflict/ace.min.js"></script>
-    <script>
-        var editor = ace.edit("json-editor");
-        editor.setTheme("ace/theme/monokai");
-        editor.session.setMode("ace/mode/json");
-    </script>
 
     <script>
         document.getElementById("spinner-container").style.display = "flex";
         let showError = true;
+        let loadedData = false;
+        let loadedConfig = false;
 
         function setLed(elementId, value) {
             const element = document.getElementById(elementId);
@@ -194,7 +166,6 @@
         }
 
         function fetchData() {
-            //fetch('http://esp32-ats.local/api/data')
             fetch('/api/data')
                 .then(response => response.json())
                 .then(data => {
@@ -203,28 +174,29 @@
                     document.getElementById('soc').textContent = data.soc.toFixed(2) + '%';
                     setLed('soc-led', data.soc_led);
                     document.getElementById('vindt').textContent = data.vindt.toFixed(2) + ' V/h';
-                    document.getElementById('current').textContent = data.current.toFixed(2) + ' A';
-                    setLed('current-led', data.current_led);
-                    document.getElementById('power').textContent = data.power.toFixed(2) + ' W';
-                    document.getElementById('energy').textContent = data.energy.toFixed(2) + ' kWh';
                     setLed('relay-state', data.relay_state);
+                    document.getElementById('relay-text').textContent = data.relay_state ? "Acceso" : "Spento";
                     document.getElementById('solar-uptime').textContent = secondsToHoursMinutes(data.solar_uptime);
                     document.getElementById('grid-uptime').textContent = secondsToHoursMinutes(data.grid_uptime);
                     document.getElementById('ntc').textContent = data.ntc_avg.toFixed(1) + '±' + data.ntc_var.toFixed(1) + ' °C';
                     setLed('ntc-ok', data.ntc_ok);
+                    document.getElementById('fan-text').textContent = data.fan ? "Accesa" : "Spenta";
                     setLed('fan', data.fan);
+                    document.getElementById('flame-text').textContent = data.flame ? "OK" : "Pericolo!";
                     setLed('flame', data.flame);
                     document.getElementById('ip').textContent = data.ip;
                     document.getElementById('uptime').textContent = secondsToHoursMinutes(data.uptime);
 
-                    document.getElementById("spinner-container").style.display = "none";
-                    showError = false;
+                    if (loadedData && loadedConfig) {
+                        document.getElementById("spinner-container").style.display = "none";
+                        showError = false;
+                    }
+                    loadedData = true;
                 })
                 .catch(error => {
                     console.error('Error: ', error);
-                    document.getElementById("spinner-container").style.display = "none";
                     if (showError) {
-                        alert("Errore, riprova più tardi.");
+                        alert("Errore nel caricare i dati!");
                         showError = false;
                     }
                 });
@@ -233,14 +205,60 @@
         fetchData();
         setInterval(fetchData, 5000);
 
+        let editor = ace.edit("json-editor");
+        editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/json");
+        fetch('/api/config')
+            .then(response => response.text())
+            .then(data => {
+                editor.setValue(data);
+                editor.clearSelection();
+
+                if (loadedData && loadedConfig) {
+                    document.getElementById("spinner-container").style.display = "none";
+                    showError = false;
+                }
+                loadedConfig = true;
+            })
+            .catch(error => {
+                console.error('Error: ', error);
+                if (loadedData)
+                    document.getElementById("spinner-container").style.display = "none";
+                if (showError) {
+                    alert("Errore nel caricare la configurazione!");
+                    showError = false;
+                }
+            });
 
         function saveConfig() {
-            const jsonContent = document.getElementById('json-editor').value;
-            console.log('Saving JSON content:', jsonContent);
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/api/config-upd?" + new URLSearchParams(JSON.parse(editor.getValue())).toString(), true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        alert("Salvataggio effettuato!");
+                    } else {
+                        alert("Errore, riprovare!");
+                    }
+                }
+            };
+            xhr.send();
         }
 
         function clearErrors() {
-            document.getElementById('json-editor').value = '';
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/api/clear-errors", true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        alert("Errori resettati.");
+                    } else {
+                        alert("Errore, riprovare!");
+                    }
+                }
+            };
+            xhr.send();
         }
 
         document.getElementById('save-button').addEventListener('click', saveConfig);
